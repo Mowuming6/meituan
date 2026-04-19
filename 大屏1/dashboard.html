@@ -1,0 +1,2640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>商品数据可视化大屏</title>
+    <script src="./vendor/echarts.min.js"></script>
+    <script src="./vendor/plotly-2.27.0.min.js"></script>
+    <script src="daily_data.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        html, body { 
+            height: 100%; 
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #f0f2f5;
+        }
+        
+        :root {
+            --meituan-yellow: #FEC200;
+            --meituan-yellow-light: #F5D047;
+            --meituan-yellow-lighter: #FFEB87;
+            --meituan-green: #23D395;
+            --meituan-orange: #FD9972;
+            --meituan-orange-dark: #FFA15A;
+            --meituan-blue: #4896F4;
+            --meituan-pink: #EE80A2;
+            --meituan-lime: #B6E880;
+            --meituan-dark: #1a1a2e;
+            --meituan-card-bg: #ffffff;
+            --meituan-text: #333333;
+            --meituan-text-secondary: #666666;
+        }
+        
+        .dashboard {
+            width: 1920px;
+            height: 1080px;
+            margin: 0 auto;
+            padding: 15px 30px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        @media (max-width: 1920px) {
+            .dashboard {
+                transform-origin: top left;
+                transform: scale(calc(100vw / 1920));
+            }
+        }
+        
+        /* Tab栏 */
+        .tab-bar {
+            display: flex;
+            height: 40px;
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            margin-bottom: 10px;
+            flex-shrink: 0;
+            border: 1px solid rgba(254, 194, 0, 0.3);
+        }
+        
+        .tab {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            border-right: 1px solid rgba(254, 194, 0, 0.2);
+            color: #fff;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+        
+        .tab:last-child { border-right: none; }
+        .tab:hover { background-color: rgba(254, 194, 0, 0.2); color: var(--meituan-yellow); }
+        .tab.active { background-color: var(--meituan-yellow); color: var(--meituan-dark); }
+        
+        /* 标题 */
+        .header {
+            height: 80px;
+            width: 1850px;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(254, 194, 0, 0.1) 20%, rgba(254, 194, 0, 0.2) 50%, rgba(254, 194, 0, 0.1) 80%, transparent 100%);
+            border-radius: 8px;
+        }
+        
+        .header h1 { 
+            font-size: 28px; 
+            color: var(--meituan-yellow);
+            font-weight: bold;
+            text-shadow: 0 0 20px rgba(254, 194, 0, 0.5);
+            letter-spacing: 4px;
+        }
+        
+        /* 筛选栏 */
+        .filter-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            height: 45px;
+            margin-bottom: 15px;
+            padding: 0 20px;
+            background: rgba(255, 255, 255, 0.08);
+            backdrop-filter: blur(10px);
+            border-radius: 8px;
+            flex-shrink: 0;
+            border: 1px solid rgba(254, 194, 0, 0.2);
+        }
+        
+        .filter-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .filter-group label { font-size: 14px; color: var(--meituan-yellow-light); font-weight: 500; }
+        
+        .filter-group select,
+        .filter-group input {
+            width: 280px;
+            height: 32px;
+            padding: 6px 12px;
+            border: 1px solid rgba(254, 194, 0, 0.3);
+            border-radius: 6px;
+            font-size: 14px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+        }
+        
+        .filter-group select option {
+            background: #1a1a2e;
+            color: #fff;
+        }
+        
+        /* 多选下拉框样式 */
+        .multi-select-container {
+            position: relative;
+            width: 280px;
+            z-index: 10000;
+        }
+        
+        .multi-select-header {
+            height: 32px;
+            padding: 6px 12px;
+            border: 1px solid rgba(254, 194, 0, 0.3);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .multi-select-header:hover {
+            border-color: rgba(254, 194, 0, 0.5);
+        }
+        
+        .dropdown-arrow {
+            font-size: 10px;
+            color: var(--meituan-yellow);
+        }
+        
+        .multi-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: #1a1a2e;
+            border: 1px solid rgba(254, 194, 0, 0.3);
+            border-radius: 6px;
+            max-height: 250px;
+            overflow-y: auto;
+            z-index: 99999;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        
+        .multi-select-dropdown.show {
+            display: block;
+        }
+        
+        /* 活动类型滚动下拉框样式 */
+        .activity-select-container {
+            position: relative;
+            width: 150px;
+            z-index: 99999;
+        }
+        
+        .activity-select-header {
+            width: 100%;
+            height: 32px;
+            padding: 6px 12px;
+            border: 1px solid rgba(254, 194, 0, 0.3);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            font-size: 13px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-sizing: border-box;
+        }
+        
+        .activity-select-header:hover {
+            border-color: rgba(254, 194, 0, 0.5);
+        }
+        
+        .activity-select-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            margin-top: 4px;
+            background: #1a1a2e;
+            border: 1px solid rgba(254, 194, 0, 0.3);
+            border-radius: 6px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 99999;
+            display: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+        }
+        
+        .activity-select-dropdown.show {
+            display: block;
+        }
+        
+        .activity-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #fff;
+            font-size: 13px;
+        }
+        
+        .activity-option:hover,
+        .activity-option.selected {
+            background: rgba(254, 194, 0, 0.3);
+        }
+        
+        .multi-select-option {
+            padding: 8px 12px;
+            cursor: pointer;
+            color: #fff;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .multi-select-option:hover {
+            background: rgba(254, 194, 0, 0.2);
+        }
+        
+        .multi-select-option input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        
+        .multi-select-option label {
+            cursor: pointer;
+            flex: 1;
+            color: #fff;
+        }
+        
+        .btn {
+            padding: 8px 24px;
+            background: linear-gradient(135deg, var(--meituan-yellow) 0%, var(--meituan-orange-dark) 100%);
+            color: var(--meituan-dark);
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(254, 194, 0, 0.4);
+        }
+        
+        /* 指标卡片 */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 12px;
+            margin-bottom: 15px;
+            flex-shrink: 0;
+        }
+        
+        .metric-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            padding: 10px;
+            border-radius: 10px;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            height: 75px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            border: 1px solid rgba(254, 194, 0, 0.2);
+            transition: all 0.3s ease;
+        }
+        
+        .metric-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(254, 194, 0, 0.2);
+            border-color: rgba(254, 194, 0, 0.5);
+        }
+        
+        .metric-card:nth-child(1) { border-top: 3px solid var(--meituan-yellow); }
+        .metric-card:nth-child(2) { border-top: 3px solid var(--meituan-green); }
+        .metric-card:nth-child(3) { border-top: 3px solid var(--meituan-blue); }
+        .metric-card:nth-child(4) { border-top: 3px solid var(--meituan-orange); }
+        .metric-card:nth-child(5) { border-top: 3px solid var(--meituan-pink); }
+        .metric-card:nth-child(6) { border-top: 3px solid var(--meituan-lime); }
+        .metric-card:nth-child(7) { border-top: 3px solid var(--meituan-yellow-light); }
+        .metric-card:nth-child(8) { border-top: 3px solid var(--meituan-orange-dark); }
+        
+        .metric-card.single-metric {
+            text-align: center;
+        }
+        
+        .metric-card.single-metric .metric-title { font-size: 12px; color: rgba(255,255,255,0.7); margin-bottom: 6px; }
+        .metric-card.single-metric .metric-value { font-size: 18px; font-weight: bold; color: var(--meituan-yellow); }
+        
+        .metric-card.double-metric {
+            text-align: center;
+        }
+        
+        .metric-card.double-metric .metric-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        
+        .metric-card.double-metric .metric-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .metric-card.double-metric .metric-title {
+            font-size: 11px;
+            color: rgba(255,255,255,0.6);
+            flex-shrink: 0;
+        }
+        
+        .metric-card.double-metric .metric-value {
+            font-size: 15px;
+            font-weight: bold;
+            color: var(--meituan-yellow);
+        }
+        
+        /* 图表网格 */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            grid-template-rows: 250px 240px 240px;
+            gap: 15px;
+            flex: 1;
+        }
+        
+        .chart-container {
+            background: linear-gradient(135deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.03) 100%);
+            padding: 15px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+            border: 1px solid rgba(254, 194, 0, 0.15);
+            transition: all 0.3s ease;
+        }
+        
+        .chart-container:hover {
+            border-color: rgba(254, 194, 0, 0.4);
+            box-shadow: 0 6px 25px rgba(254, 194, 0, 0.15);
+        }
+        
+        .chart-title {
+            font-size: 15px;
+            color: var(--meituan-yellow);
+            margin-bottom: 12px;
+            text-align: center;
+            font-weight: 600;
+            letter-spacing: 1px;
+        }
+        
+        .chart { 
+            width: 100%; 
+            height: calc(100% - 30px); 
+            position: relative;
+        }
+        
+        /* 确保图表canvas不会覆盖下拉框 */
+        .chart canvas {
+            z-index: 1 !important;
+        }
+        
+        /* 筛选栏设置为最高层级 */
+        .filter-bar {
+            z-index: 9999;
+            position: relative;
+        }
+        
+        /* 网格布局 */
+        .chart-1 { grid-column: 1 / 3; grid-row: 1 / 2; }
+        .chart-2 { grid-column: 3 / 5; grid-row: 1 / 2; }
+        .chart-5 { grid-column: 1 / 3; grid-row: 2 / 4; }
+        .chart-6 { grid-column: 3 / 4; grid-row: 2 / 3; }
+        .chart-7 { grid-column: 4 / 5; grid-row: 2 / 3; }
+        .chart-8 { grid-column: 3 / 4; grid-row: 3 / 4; }
+        .chart-9 { grid-column: 4 / 5; grid-row: 3 / 4; }
+        
+        /* 图表放大弹窗样式 */
+        .chart-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            z-index: 10000;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .chart-modal-content {
+            background: #1a1a2e;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            width: 90%;
+            height: 90%;
+            max-width: 1400px;
+            max-height: 800px;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            overflow: hidden;
+        }
+
+        .chart-modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            flex-shrink: 0;
+        }
+        
+        .chart-modal-header h3 {
+            margin: 0;
+            color: #fff;
+            font-size: 18px;
+            font-weight: 500;
+        }
+        
+        .chart-modal-close {
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 28px;
+            cursor: pointer;
+            line-height: 1;
+            padding: 0;
+            width: 32px;
+            height: 32px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+        
+        .chart-modal-close:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.1);
+        }
+        
+        .chart-modal-body {
+            flex: 1;
+            padding: 20px;
+            min-height: 0;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+    <!-- 图表放大弹窗 -->
+    <div id="chartModal" class="chart-modal">
+        <div class="chart-modal-content">
+            <div class="chart-modal-header">
+                <h3 id="modalTitle">图表详情</h3>
+                <button class="chart-modal-close" onclick="closeChartModal()">&times;</button>
+            </div>
+            <div id="modalChart" class="chart-modal-body"></div>
+        </div>
+    </div>
+    
+    <div class="dashboard">
+        <div class="tab-bar">
+            <div class="tab">A</div>
+            <div class="tab">B</div>
+            <div class="tab">C</div>
+            <div class="tab">D</div>
+        </div>
+        
+        <div class="header">
+            <h1>商品数据可视化大屏</h1>
+        </div>
+        
+        <div class="filter-bar">
+            <div class="filter-group">
+                <label>商品品类选择</label>
+                <select id="category-type">
+                    <option value="一级分类" selected>一级分类</option>
+                    <option value="二级分类">二级分类</option>
+                    <option value="三级分类">三级分类</option>
+                    <option value="品牌名称">品牌名称</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label>商品细分</label>
+                <div class="multi-select-container" id="subcategory-container">
+                    <div class="multi-select-header" id="subcategory-header">
+                        <span id="subcategory-display">全部</span>
+                        <span class="dropdown-arrow">▼</span>
+                    </div>
+                    <div class="multi-select-dropdown" id="subcategory-dropdown">
+                        <div class="multi-select-option selected" data-value="all">
+                            <input type="checkbox" checked id="check-all"> <label for="check-all">全部</label>
+                        </div>
+                        <div id="subcategory-options"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="filter-group">
+                <label>时间范围</label>
+                <input type="date" id="start-date" value="2025-09-01" min="2025-09-01" max="2025-11-30">
+                <span style="color: #fff;">至</span>
+                <input type="date" id="end-date" value="2025-11-30" min="2025-09-01" max="2025-11-30">
+                <button class="btn" onclick="applyFilters()">确定</button>
+            </div>
+        </div>
+        
+        <div class="metrics-grid">
+            <div class="metric-card double-metric">
+                <div class="metric-row">
+                    <span class="metric-title">订单量</span>
+                    <span class="metric-value">-</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-title">订单量同比增长</span>
+                    <span class="metric-value">-</span>
+                </div>
+            </div>
+            <div class="metric-card double-metric">
+                <div class="metric-row">
+                    <span class="metric-title">销售量</span>
+                    <span class="metric-value">-</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-title">销售量同比增长</span>
+                    <span class="metric-value">-</span>
+                </div>
+            </div>
+            <div class="metric-card double-metric">
+                <div class="metric-row">
+                    <span class="metric-title">销售额</span>
+                    <span class="metric-value">-</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-title">销售额同比增长</span>
+                    <span class="metric-value">-</span>
+                </div>
+            </div>
+            <div class="metric-card single-metric">
+                <div class="metric-title">连带率</div>
+                <div class="metric-value">-</div>
+            </div>
+            <div class="metric-card single-metric">
+                <div class="metric-title">浏览购买转化率</div>
+                <div class="metric-value">-</div>
+            </div>
+            <div class="metric-card double-metric">
+                <div class="metric-row">
+                    <span class="metric-title">平均价格</span>
+                    <span class="metric-value">-</span>
+                </div>
+                <div class="metric-row">
+                    <span class="metric-title">平均折扣率</span>
+                    <span class="metric-value">-</span>
+                </div>
+            </div>
+            <div class="metric-card single-metric">
+                <div class="metric-title">贡献度</div>
+                <div class="metric-value">-</div>
+            </div>
+            <div class="metric-card single-metric">
+                <div class="metric-title">平均单品产出</div>
+                <div class="metric-value">-</div>
+            </div>
+        </div>
+        
+        <div class="charts-grid">
+            <div class="chart-container chart-1">
+                <div class="chart-title">销售额、销售量、订单量趋势图</div>
+                <div id="trendChart" class="chart"></div>
+            </div>
+            <div class="chart-container chart-2">
+                <div class="chart-title">销售额/销售量/订单量占比</div>
+                <div id="combinedPieChart" class="chart"></div>
+            </div>
+            <div class="chart-container chart-5">
+                <div class="chart-title">关联规则3D图</div>
+                <div class="filter-bar" style="padding: 8px 15px; border-bottom: 1px solid rgba(255,255,255,0.1); background: transparent; margin: 0;">
+                    <div class="filter-group" style="gap: 8px;">
+                        <label style="font-size: 13px;">选择活动类型</label>
+                        <div class="activity-select-container">
+                            <div class="activity-select-header" id="activity-type-header">
+                                <span id="activity-type-display">8月活动</span>
+                                <span class="dropdown-arrow">▼</span>
+                            </div>
+                            <div class="activity-select-dropdown" id="activity-type-dropdown">
+                                <div class="activity-option selected" data-value="8月活动">8月活动</div>
+                                <div class="activity-option" data-value="9月活动">9月活动</div>
+                                <div class="activity-option" data-value="10月活动">10月活动</div>
+                                <div class="activity-option" data-value="11月活动">11月活动</div>
+                                <div class="activity-option" data-value="8月">8月</div>
+                                <div class="activity-option" data-value="9月">9月</div>
+                                <div class="activity-option" data-value="10月">10月</div>
+                                <div class="activity-option" data-value="11月">11月</div>
+                                <div class="activity-option" data-value="9月无活动">9月无活动</div>
+                                <div class="activity-option" data-value="10月无活动">10月无活动</div>
+                                <div class="activity-option" data-value="11月无活动">11月无活动</div>
+                            </div>
+                        </div>
+                        <button id="activity-type-btn" style="width: 60px; height: 32px; font-size: 13px; background-color: #FEC200; color: #000; border: none; border-radius: 4px; cursor: pointer;">确定</button>
+                    </div>
+                </div>
+                <div id="relationChart" class="chart" style="height: 390px;"></div>
+            </div>
+            <div class="chart-container chart-6">
+                <div class="chart-title">商品转化率象限图</div>
+                <div id="quadrantChart" class="chart"></div>
+            </div>
+            <div class="chart-container chart-7">
+                <div class="chart-title">商品折扣分布箱线图</div>
+                <div id="boxChart" class="chart"></div>
+            </div>
+            <div class="chart-container chart-8">
+                <div class="chart-title">商品综合表现雷达图</div>
+                <div id="radarChart" class="chart"></div>
+            </div>
+            <div class="chart-container chart-9">
+                <div class="chart-title">品类-子品类分布热力图</div>
+                <div id="heatmapChart" class="chart"></div>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // 美团配色方案
+        const meituanColors = ['#FEC200', '#23D395', '#4896F4', '#FD9972', '#EE80A2', '#B6E880', '#F5D047', '#FFA15A'];
+        
+        // 分类数据
+        const categoryData = {
+            '一级分类': ['食品', '饮料与冲调', '冷冻食品', '调味', '家庭清洁与纸品', '粮油', '护理', '家居日用', '宠物', '母婴', '其他', '箱包', '数码', '文具'],
+            '二级分类': ['膨化薯片', '碳酸饮料', '巧克力', '饼干糕点', '冰品甜饮', '果汁饮料', '饮用水', '糖果', '功能/特殊饮料', '速食面点', '餐用酱/果酱', '罐头食品', '生活纸品', '茶饮/茶叶', '织物护理', '坚果炒货', '冷冻肉禽/海鲜', '冷冻预制调理食品', '方便速食', '咖啡/可可', '早餐代餐', '基础调味', '居家清洁', '身体护理', '烹饪酱/醋', '食用油', '复合/单体香料', '大米/杂粮', '宠物食品', '冷冻蔬菜/水果', '面粉/淀粉', '其他食品', '洗发护发', '一次性餐厨用品', '辅料/冰块', '一次性/消杀工具', '口腔护理', '婴幼儿纸尿裤/湿巾', '烘焙辅料', '冷冻面点/主食', '其他', '居家耗材/收纳', '婴幼儿奶粉', '冲调乳饮', '干果蜜饯', '箱包', '面部护肤', '清洁工具', '冷冻半成品', '宠物用品', '厨卫工具/件', '婴幼儿洗护', '居家香氛', '计生用品', '婴幼儿辅食/零食', '数码', '美发造型/彩妆', '男士护理', '护理工具/其他', '文具', '婴幼儿口腔护理', '女性护理', '即食肉类'],
+            '三级分类': ['袋装薯片/条', '夹心巧克力', '纯净水', '可乐汽水', '玉米类膨化食品', '方便面', '异形冰淇淋', '混合口味汽水', '棒状冰淇淋', '软糖', '威化饼干', '柠檬味汽水', '牛奶巧克力', '夹心饼干/注心饼干', '混合果蔬汁', '罐装薯片/条', '橙汁', '能量饮料', '甜筒冰淇淋', '口香糖', '无酒精麦芽饮料', '苹果汁', '爆米花', '蔬菜罐头', '花/果茶饮料', '水产罐头', '休闲蛋糕', '健康饼干', '冷冻炸鸡肉', '普通面巾纸', '卫生巾', '苏打汽水', '速溶咖啡', '番茄酱', '冷冻炸薯类制品', '桶装冰淇淋', '杯装冰淇淋', '意大利面', '其它膨化食品', '猫主粮', '其他果汁', '咸饼干', '面包干', '气泡水', '通心粉', '辣椒酱', '洗衣粉', '其它口味汽水', '袋装冰', '橙味汽水', '运动饮料', '白糖', '红茶茶叶', '白巧克力', '甜饼干', '豆类罐头', '冰杯', '洗衣液', '洗洁精', '菠萝汁', '印度香米', '巧克力糖', '垃圾袋', '橄榄油', '混合果仁', '果仁巧克力', '其他坚果', '漂白剂', '谷物棒', '烘焙粉类', '蛋黄酱', '蜂蜜&糖浆', '冷冻汉堡', '通用面粉', '花生酱', '芒果汁', '矿泉水', '衣物柔顺剂', '瓜子', '洗手液', '多功能清洁剂', '麦片', '其他冰淇淋', '牙膏/牙粉', '葵花籽油', '腰果', '沐浴露', '止汗除臭', '冷冻帕拉塔', '巧克力酱', '纸尿裤', '其它薯片/条', '棉花糖', '玉米片', '盐', '绿叶类冷冻蔬菜', '手提包', '冷冻肉肠类', '芝麻酱', '方便汤', '意面酱&披萨酱', '黑巧克力', '其它饼干', '粳米', '其他冷冻即烹食品', '吸水厨房用纸', '派', '沙拉酱', '其它户外用品', '棒棒糖', '一次性杯子', '全脂奶粉', '研磨咖啡', '花生', '组合巧克力', '玩具糖果', '混合麦片', '混合香料粉', '燕麦', '调和油', '滋养洗发水', '天然醋', '其它调味酱', '猫零食', '洗碗机清洁剂', '番茄沙司', '节庆饰品', '功能性糖果', '鸡粉/鸡精/味精', '奶油酱', '干椰枣', '杏仁', '豆类冷冻蔬菜', '冷冻炸牛肉', '香皂', '开心果', '猫砂', '婴儿湿巾', '柠檬茶', '钢丝球/清洁海绵', '硬糖', '混合冷冻蔬菜', '其他大米', '其它调味料&香料', '湿椰枣', '特色衣物清洁', '花果茶叶', '其他冷冻面点', '咖啡胶囊/液', '天然矿泉水', '三段婴儿奶粉', '整果冷冻', '胡椒/胡椒粉', '水果罐头', '榛子酱', '绿茶茶叶', '护发素和护发修复', '装饰饼干', '乳饮料', '烘焙半成品', '草莓酱', '彩漂', '干辣椒/辣椒粉', '玉米粉', '牙刷', '马桶清洁剂', '杂粮豆类', '一次性筷/勺/叉', '有芯卫生卷纸', '其它巧克力', '一次性餐盒', '清洁洗发水', '一段婴儿奶粉', '身体乳', '玻璃清洁剂', '草莓味汽水', '小麦粉', '桃汁', '酱油', '石榴汁', '麦粉', '孜然/孜然粉', '封口用具', '冷冻萨莫萨', '去屑洗发水', '乳液/面霜', '卫生护垫', '漱口水', '肉桂', '马萨拉粉', '柔顺洗发水', '沥水篮', '地板清洁剂', '烘焙辅料', '杂粮谷类', '二段婴儿奶粉', '红糖/黑糖', '桶装薯片/条', '其它咖啡饮料', '干电池', '一次性手套', '其他餐饮类一次性用品', '手帕纸', '保鲜袋', '冷冻炸鱼', '一次性桌布', '咖啡伴侣', '芥末酱', '果酱', '卡布奇诺', '冷冻炸虾', '核桃', '卸妆用品', '可可粉', '曲奇饼干', '其它休闲蛋糕&面包', '铝箔', '其他果冻/布丁', '冷冻酥皮类', '姜黄粉', '柠檬汁', '玉米油', '蒜末/蒜粉', '其他糖果', '夹心糖', '其他油/酥油', '婴幼儿洗发水/沐浴乳', '其它意面&面条', '冷冻春卷', '脱毛膏', '芫荽粉', '其他宠物食品', '瑞士卷', '茶包/茶粉', '咖喱粉', '修复洗发水', '一次性盘子', '洋葱末/洋葱粉', '杀虫剂', '拉拉裤', '空气清新喷雾', '无酒精鸡尾酒饮料', '其它冷冻蔬菜', '油污清洁剂', '其他婴儿奶粉', '强化奶粉', '冷冻炸素菜', '拿铁咖啡', '混合全香料', '制冰用具', '防脱洗发水', '手机配件', '卡布萨香料', '保鲜膜/套', '卡拉克茶', '烧烤酱', '洁面用品', '婴儿护肤', '刮毛刀/剃毛刀', '避孕套', '管道疏通剂', '酥油', '身体喷雾', '姜末/姜粉', '菜籽油', '水果干', '收纳篮/袋/盒/桶', '其他运动功能饮料', '化妆棉', '消毒湿巾', '家务手套', '多效洗发水', '奶糖', '液体香薰', '摩卡咖啡', '黑咖啡', '干薄荷', '其它水具酒具', '洗衣凝珠', '淀粉', '苹果醋', '其他婴儿零食', '其他方便速食', '华夫饼', '一次性碗', '果泥', '小苏打/食用碱', '其他身体护理', '车载香薰', '其他杂粮', '唇部彩妆', '染发剂', '月桂', '润滑液', '其它冷冻水果', '豆蔻', '牙线', '剃须泡沫/啫喱', '苹果味汽水', '医用棉签/棉棒/棉片', '排卵验孕', '果泥冷冻', '杯状果冻', '椰子油', '剃须刀/刀头', '抽式绵柔巾', '其他洗发/护发', '饼干酱', '其他面部护理', '卡布萨酱', '米粉', '其他茶叶茶包', '纯水湿巾', '塔塔酱', '面膜', '碧根果', '马桶刷', '其它厨房用具', '画具画材', '扫把簸箕套装', '面部精华/精华乳', '吸油厨房用纸', '耳机', '海鲜粉', '纸类', '发膜', '其他男士护理', '茴香', '其它清洁工具', '婴童牙膏', '冷冻即食面/饭', '椰奶/椰汁', '其它婴儿洗护用品', '婴童牙刷', '烘焙馅料', '拖把', '意式调味汁', '私处洗液', '眼霜/眼部精华', '驱蚊器', '其他冷冻甜点', '鼻喉护理', '其他辅食', '发型造型', '萨莫萨粉', '本册/便签', '防晒霜/乳/喷雾', '赛拉米', '卫生棉条', '烹饪用具', '笔类', '多功能刀', '面部护肤套装', '修眉用品', '移动电源/充电宝', '狗主粮', '一次性拖把布', '爽肤水', '盒装冰淇淋', '安心裤', '瓜果刀/刨', '菜刀/剔骨刀', '刀叉勺', '婴儿香水', '其他蔬果干/椰枣', '影音播放器'],
+            '品牌名称': ['Brand13', 'Brand18', 'Brand47', 'Brand102', 'Brand3', 'Brand60', 'Brand26', 'Brand1', 'Brand46', 'Brand43', 'Brand91', 'Brand48', 'Brand71', 'Brand16', 'Brand120', 'Brand11', 'Brand41', 'Brand94', 'Brand137', 'Brand53', 'Brand194', 'Brand136', 'Brand105', 'Brand97', 'Brand77', 'Brand36', 'Brand28', 'Brand109', 'Brand89', 'Brand27', 'Brand108', 'Brand50', 'Brand9', 'Brand93', 'Brand111', 'Brand23', 'Brand15', 'Brand44', 'Brand145', 'Brand65', 'Brand40', 'Brand143', 'Brand4', 'Brand189', 'Brand141', 'Brand45', 'Brand154', 'Brand212', 'Brand252', 'Brand206', 'Brand73', 'Brand20', 'Brand225', 'Brand130', 'Brand70', 'Brand72', 'Brand289', 'Brand79', 'Brand118', 'Brand25', 'Brand86', 'Brand201', 'Brand177', 'Brand195', 'Brand144', 'Brand153', 'Brand261', 'Brand101', 'Brand172', 'Brand162', 'Brand164', 'Brand181', 'Brand187', 'Brand285', 'Brand98', 'Brand85', 'Brand156', 'Brand107', 'Brand213', 'Brand295', 'Brand161', 'Brand114', 'Brand103', 'Brand126', 'Brand169', 'Brand232', 'Brand274', 'Brand2', 'Brand139', 'Brand155', 'Brand268', 'Brand271', 'Brand122', 'Brand197', 'Brand233', 'Brand325', 'Brand170', 'Brand291', 'Brand88', 'Brand76', 'Brand293', 'Brand57', 'Brand174', 'Brand119', 'Brand255', 'Brand288', 'Brand30', 'Brand350', 'Brand131', 'Brand377', 'Brand22', 'Brand87', 'Brand198', 'Brand211', 'Brand259', 'Brand37', 'Brand58', 'Brand80', 'Brand214', 'Brand281', 'Brand84', 'Brand19', 'Brand51', 'Brand6', 'Brand33', 'Brand216', 'Brand223', 'Brand282', 'Brand92', 'Brand207', 'Brand246', 'Brand160', 'Brand190', 'Brand278', 'Brand165', 'Brand378', 'Brand74', 'Brand407', 'Brand397', 'Brand166', 'Brand260', 'Brand372', 'Brand193', 'Brand123', 'Brand64', 'Brand168', 'Brand54', 'Brand63', 'Brand116', 'Brand199', 'Brand208', 'Brand121', 'Brand112', 'Brand148', 'Brand466', 'Brand346', 'Brand296', 'Brand230', 'Brand300', 'Brand171', 'Brand82', 'Brand250', 'Brand286', 'Brand236', 'Brand182', 'Brand217', 'Brand240', 'Brand69', 'Brand439', 'Brand163', 'Brand348', 'Brand249', 'Brand273', 'Brand411', 'Brand231', 'Brand332', 'Brand224', 'Brand106', 'Brand62', 'Brand203', 'Brand327', 'Brand29', 'Brand247', 'Brand462', 'Brand176', 'Brand99', 'Brand228', 'Brand263', 'Brand284', 'Brand229', 'Brand324', 'Brand179', 'Brand173', 'Brand313', 'Brand374', 'Brand279', 'Brand292', 'Brand157', 'Brand329', 'Brand428', 'Brand485', 'Brand159', 'Brand349', 'Brand175', 'Brand215', 'Brand133', 'Brand290', 'Brand340', 'Brand422', 'Brand297', 'Brand266', 'Brand354', 'Brand304', 'Brand473', 'Brand113', 'Brand158', 'Brand454', 'Brand381', 'Brand222', 'Brand135', 'Brand341', 'Brand322', 'Brand152', 'Brand323', 'Brand430', 'Brand258', 'Brand469', 'Brand334', 'Brand83', 'Brand345', 'Brand347', 'Brand245', 'Brand445', 'Brand188', 'Brand95', 'Brand416', 'Brand331', 'Brand312', 'Brand358', 'Brand357', 'Brand335', 'Brand386', 'Brand12', 'Brand301', 'Brand55', 'Brand382', 'Brand371', 'Brand149', 'Brand337', 'Brand458', 'Brand127', 'Brand360', 'Brand433', 'Brand391', 'Brand401', 'Brand241', 'Brand302', 'Brand417', 'Brand202', 'Brand100', 'Brand10', 'Brand209', 'Brand368', 'Brand414', 'Brand446', 'Brand192', 'Brand237', 'Brand394', 'Brand39', 'Brand303', 'Brand242', 'Brand336', 'Brand419', 'Brand472', 'Brand395', 'Brand210', 'Brand373', 'Brand134', 'Brand234', 'Brand276', 'Brand404', 'Brand5', 'Brand180', 'Brand272', 'Brand451', 'Brand14', 'Brand376', 'Brand277', 'Brand431', 'Brand128', 'Brand365', 'Brand494', 'Brand243', 'Brand459', 'Brand426', 'Brand308', 'Brand283', 'Brand400', 'Brand317', 'Brand465', 'Brand413', 'Brand442', 'Brand369', 'Brand305', 'Brand167', 'Brand364', 'Brand185', 'Brand7', 'Brand389', 'Brand270', 'Brand254', 'Brand306', 'Brand124', 'Brand196', 'Brand539', 'Brand49', 'Brand339', 'Brand299', 'Brand256', 'Brand24', 'Brand239', 'Brand390', 'Brand320', 'Brand486', 'Brand421', 'Brand392', 'Brand117', 'Brand235', 'Brand427', 'Brand366', 'Brand581', 'Brand186', 'Brand506', 'Brand319', 'Brand220', 'Brand476', 'Brand482', 'Brand464', 'Brand410', 'Brand493', 'Brand218', 'Brand425', 'Brand362', 'Brand314', 'Brand584', 'Brand420', 'Brand355', 'Brand151', 'Brand512', 'Brand561', 'Brand311', 'Brand129', 'Brand533', 'Brand554', 'Brand471', 'Brand125', 'Brand383', 'Brand287', 'Brand435', 'Brand449', 'Brand405', 'Brand455', 'Brand438', 'Brand535', 'Brand227', 'Brand547', 'Brand269', 'Brand453', 'Brand441', 'Brand542', 'Brand470', 'Brand480', 'Brand499', 'Brand489', 'Brand468', 'Brand338', 'Brand150', 'Brand221', 'Brand490', 'Brand437', 'Brand440', 'Brand17', 'Brand467', 'Brand534', 'Brand551', 'Brand280', 'Brand548', 'Brand388', 'Brand418', 'Brand415', 'Brand380', 'Brand262', 'Brand567', 'Brand294', 'Brand402', 'Brand463', 'Brand527', 'Brand226', 'Brand574', 'Brand318', 'Brand488', 'Brand477', 'Brand543', 'Brand513', 'Brand447', 'Brand461', 'Brand557', 'Brand510', 'Brand479', 'Brand387', 'Brand496', 'Brand450', 'Brand595', 'Brand342', 'Brand412', 'Brand393', 'Brand436', 'Brand370', 'Brand552', 'Brand363', 'Brand424', 'Brand570', 'Brand560', 'Brand505', 'Brand298', 'Brand481', 'Brand475', 'Brand522', 'Brand265', 'Brand326', 'Brand67', 'Brand511', 'Brand614', 'Brand384', 'Brand367', 'Brand396', 'Brand588', 'Brand616', 'Brand257', 'Brand200', 'Brand491', 'Brand519', 'Brand556', 'Brand501', 'Brand603', 'Brand361', 'Brand343', 'Brand634', 'Brand444', 'Brand514', 'Brand541', 'Brand328', 'Brand549', 'Brand379', 'Brand604', 'Brand545', 'Brand580', 'Brand408', 'Brand406', 'Brand529', 'Brand546', 'Brand566', 'Brand487', 'Brand248', 'Brand500', 'Brand599', 'Brand585', 'Brand183', 'Brand575', 'Brand264', 'Brand518', 'Brand515', 'Brand620', 'Brand508', 'Brand544', 'Brand532', 'Brand531', 'Brand536', 'Brand484', 'Brand632', 'Brand645', 'Brand96', 'Brand553', 'Brand593', 'Brand569', 'Brand607', 'Brand398', 'Brand608', 'Brand460', 'Brand525', 'Brand573', 'Brand559', 'Brand631', 'Brand638', 'Brand34', 'Brand321', 'Brand621', 'Brand572', 'Brand597', 'Brand591', 'Brand502', 'Brand602', 'Brand558', 'Brand642', 'Brand615', 'Brand498', 'Brand520', 'Brand583', 'Brand613', 'Brand582', 'Brand568', 'Brand624', 'Brand333', 'Brand644', 'Brand432', 'Brand629', 'Brand600', 'Brand579', 'Brand356', 'Brand611', 'Brand409', 'Brand516', 'Brand651', 'Brand564', 'Brand562', 'Brand670', 'Brand610', 'Brand497', 'Brand594', 'Brand647', 'Brand530', 'Brand660', 'Brand571', 'Brand492', 'Brand667', 'Brand649', 'Brand587', 'Brand618', 'Brand640', 'Brand664', 'Brand550', 'Brand636', 'Brand679', 'Brand685', 'Brand399', 'Brand429', 'Brand503', 'Brand650', 'Brand538', 'Brand565', 'Brand375', 'Brand344', 'Brand495', 'Brand681', 'Brand509', 'Brand612', 'Brand617', 'Brand671', 'Brand666', 'Brand635', 'Brand622', 'Brand646', 'Brand596', 'Brand601', 'Brand625', 'Brand310', 'Brand576', 'Brand680', 'Brand678', 'Brand683', 'Brand694', 'Brand654', 'Brand623', 'Brand687', 'Brand669', 'Brand661', 'Brand659', 'Brand677', 'Brand699', 'Brand598', 'Brand682', 'Brand668', 'Brand692', 'Brand643', 'Brand648', 'Brand609', 'Brand688', 'Brand700', 'Brand673', 'Brand690', 'Brand528', 'Brand628', 'Brand641', 'Brand351', 'Brand672', 'Brand630']
+        };
+        
+        // 当前选中的细分项
+        let selectedSubcategories = ['all'];
+        
+        // 趋势图实例（全局变量，用于更新）
+        let trendChart = null;
+        // 环形图实例（全局变量，用于更新）
+        let combinedPieChart = null;
+        // 象限图实例（全局变量，用于更新）
+        let quadrantChart = null;
+        // 箱线图实例（全局变量，用于更新）
+        let boxChart = null;
+        let radarChart = null;
+        let heatmapChart = null;
+        
+        // 初始化筛选栏
+        function initFilters() {
+            const categoryTypeSelect = document.getElementById('category-type');
+            const subcategoryHeader = document.getElementById('subcategory-header');
+            const subcategoryDropdown = document.getElementById('subcategory-dropdown');
+            const checkAll = document.getElementById('check-all');
+            
+            // 商品品类选择改变时更新商品细分
+            categoryTypeSelect.addEventListener('change', function() {
+                updateSubcategoryOptions(this.value);
+            });
+            
+            // 点击头部展开/收起下拉框
+            subcategoryHeader.addEventListener('click', function(e) {
+                e.stopPropagation();
+                subcategoryDropdown.classList.toggle('show');
+            });
+            
+            // 点击外部关闭下拉框
+            document.addEventListener('click', function() {
+                subcategoryDropdown.classList.remove('show');
+            });
+            
+            subcategoryDropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            
+            // 全部复选框
+            checkAll.addEventListener('change', function() {
+                const checkboxes = document.querySelectorAll('#subcategory-options input[type="checkbox"]');
+                checkboxes.forEach(cb => cb.checked = this.checked);
+                updateSelectedSubcategories();
+            });
+            
+            // 初始化商品细分选项
+            updateSubcategoryOptions('一级分类');
+            
+            // 时间范围验证
+            const startDate = document.getElementById('start-date');
+            const endDate = document.getElementById('end-date');
+            
+            startDate.addEventListener('change', function() {
+                if (this.value > endDate.value) {
+                    endDate.value = this.value;
+                }
+            });
+            
+            endDate.addEventListener('change', function() {
+                if (this.value < startDate.value) {
+                    startDate.value = this.value;
+                }
+            });
+        }
+        
+        // 更新商品细分选项
+        function updateSubcategoryOptions(categoryType) {
+            const optionsContainer = document.getElementById('subcategory-options');
+            const items = categoryData[categoryType] || [];
+            
+            optionsContainer.innerHTML = items.map((item, index) => `
+                <div class="multi-select-option" data-value="${item}">
+                    <input type="checkbox" id="sub-${index}" value="${item}"> 
+                    <label for="sub-${index}">${item}</label>
+                </div>
+            `).join('');
+            
+            // 添加事件监听
+            const checkboxes = optionsContainer.querySelectorAll('input[type="checkbox"]');
+            checkboxes.forEach(cb => {
+                cb.addEventListener('change', function() {
+                    updateSelectedSubcategories();
+                });
+            });
+            
+            // 重置为全部
+            selectedSubcategories = ['all'];
+            document.getElementById('check-all').checked = true;
+            updateSubcategoryDisplay();
+        }
+        
+        // 更新选中的细分项
+        function updateSelectedSubcategories() {
+            const checkAll = document.getElementById('check-all');
+            const checkboxes = document.querySelectorAll('#subcategory-options input[type="checkbox"]:checked');
+            const allCheckboxes = document.querySelectorAll('#subcategory-options input[type="checkbox"]');
+            
+            // 获取触发此函数的复选框（通过事件目标）
+            const eventTarget = event && event.target;
+            
+            if (eventTarget && eventTarget.id === 'check-all') {
+                // 点击了"全部"复选框
+                if (checkAll.checked) {
+                    // 取消其他所有选项
+                    allCheckboxes.forEach(cb => cb.checked = false);
+                    selectedSubcategories = ['all'];
+                } else {
+                    // 不允许取消全部（至少保留一个）
+                    checkAll.checked = true;
+                    selectedSubcategories = ['all'];
+                }
+            } else {
+                // 点击了其他选项
+                const checkedCount = checkboxes.length;
+                
+                if (checkedCount === 0) {
+                    // 如果没有选中任何选项，恢复为"全部"
+                    checkAll.checked = true;
+                    selectedSubcategories = ['all'];
+                } else {
+                    // 取消"全部"的勾选，使用选中的具体选项
+                    checkAll.checked = false;
+                    selectedSubcategories = Array.from(checkboxes).map(cb => cb.value);
+                }
+            }
+            
+            updateSubcategoryDisplay();
+        }
+        
+        // 更新显示文本
+        function updateSubcategoryDisplay() {
+            const display = document.getElementById('subcategory-display');
+            if (selectedSubcategories.includes('all')) {
+                display.textContent = '全部';
+            } else if (selectedSubcategories.length === 1) {
+                display.textContent = selectedSubcategories[0];
+            } else {
+                display.textContent = `已选 ${selectedSubcategories.length} 项`;
+            }
+        }
+        
+        // 格式化数字
+        function formatNumber(num) {
+            if (num === null || num === undefined) return 'none';
+            if (num >= 1000000) return (num / 1000000).toFixed(2) + 'M';
+            if (num >= 1000) return num.toLocaleString();
+            return num.toFixed(2);
+        }
+        
+        // 格式化百分比
+        function formatPercent(num) {
+            if (num === null || num === undefined) return 'none';
+            const sign = num >= 0 ? '+' : '';
+            return sign + num.toFixed(1) + '%';
+        }
+        
+        // 格式化货币
+        function formatCurrency(num) {
+            if (num === null || num === undefined) return 'none';
+            if (num >= 1000000) return '¥' + (num / 1000000).toFixed(2) + 'M';
+            if (num >= 1000) return '¥' + num.toLocaleString();
+            return '¥' + num.toFixed(2);
+        }
+        
+        // 更新指标卡显示
+        function updateMetricCards(data) {
+            const current = data.current;
+            const yoy = data.yoy;
+            
+            // 获取所有指标卡
+            const metricCards = document.querySelectorAll('.metric-card');
+            
+            // 订单量 + 订单量同比增长
+            const card1 = metricCards[0];
+            card1.querySelector('.metric-row:nth-child(1) .metric-value').textContent = formatNumber(current['订单量']);
+            const orderYoy = yoy['订单量同比增长'];
+            card1.querySelector('.metric-row:nth-child(2) .metric-value').textContent = orderYoy !== null ? formatPercent(orderYoy) : 'none';
+            
+            // 销售量 + 销售量同比增长
+            const card2 = metricCards[1];
+            card2.querySelector('.metric-row:nth-child(1) .metric-value').textContent = formatNumber(current['销售量']);
+            const salesYoy = yoy['销售量同比增长'];
+            card2.querySelector('.metric-row:nth-child(2) .metric-value').textContent = salesYoy !== null ? formatPercent(salesYoy) : 'none';
+            
+            // 销售额 + 销售额同比增长
+            const card3 = metricCards[2];
+            card3.querySelector('.metric-row:nth-child(1) .metric-value').textContent = formatCurrency(current['销售额']);
+            const amountYoy = yoy['销售额同比增长'];
+            card3.querySelector('.metric-row:nth-child(2) .metric-value').textContent = amountYoy !== null ? formatPercent(amountYoy) : 'none';
+            
+            // 连带率
+            const card4 = metricCards[3];
+            card4.querySelector('.metric-value').textContent = current['连带率'].toFixed(2);
+            
+            // 浏览购买转化率
+            const card5 = metricCards[4];
+            card5.querySelector('.metric-value').textContent = current['浏览购买转化率'].toFixed(1) + '%';
+            
+            // 平均价格 + 平均折扣率
+            const card6 = metricCards[5];
+            card6.querySelector('.metric-row:nth-child(1) .metric-value').textContent = '¥' + current['平均价格'].toFixed(2);
+            card6.querySelector('.metric-row:nth-child(2) .metric-value').textContent = current['平均折扣率'].toFixed(1) + '%';
+            
+            // 贡献度
+            const card7 = metricCards[6];
+            card7.querySelector('.metric-value').textContent = current['贡献度'].toFixed(1) + '%';
+            
+            // 平均单品产出
+            const card8 = metricCards[7];
+            card8.querySelector('.metric-value').textContent = '¥' + current['平均单品产出'].toFixed(2);
+        }
+        
+        // 计算日期差（天数）
+        function getDaysDiff(startDate, endDate) {
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            return Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        }
+        
+        // 获取同比时间段
+        function getPrevPeriod(startDate, endDate) {
+            const days = getDaysDiff(startDate, endDate);
+            const start = new Date(startDate);
+            const end = new Date(endDate);
+            const prevEnd = new Date(start);
+            prevEnd.setDate(prevEnd.getDate() - 1);
+            const prevStart = new Date(prevEnd);
+            prevStart.setDate(prevStart.getDate() - days + 1);
+            return {
+                start: prevStart.toISOString().split('T')[0],
+                end: prevEnd.toISOString().split('T')[0]
+            };
+        }
+        
+        // 计算时间段内的指标
+        function calculateMetrics(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            
+            // 筛选日期范围内的数据
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            // 计算该日期范围内的总销售额（用于贡献度计算）
+            let totalSalesAll = 0;
+            filtered.forEach(d => {
+                totalSalesAll += d.sa;
+            });
+            
+            // 如果选择了具体品类（非"全部"），则按品类筛选
+            if (subcategories && !subcategories.includes('all')) {
+                // 根据categoryType筛选对应字段
+                filtered = filtered.filter(d => {
+                    if (categoryType === '一级分类') {
+                        return subcategories.includes(d.c1);
+                    } else if (categoryType === '二级分类') {
+                        return subcategories.includes(d.c2);
+                    } else if (categoryType === '三级分类') {
+                        return subcategories.includes(d.c3);
+                    } else if (categoryType === '品牌名称') {
+                        return subcategories.includes(d.b);
+                    }
+                    return true;
+                });
+            }
+            
+            if (filtered.length === 0) {
+                return null;
+            }
+            
+            // 聚合指标
+            const metrics = {
+                订单量: 0,
+                销售量: 0,
+                销售额: 0,
+                连带率: 0,
+                浏览购买转化率: 0,
+                平均价格: 0,
+                平均折扣率: 0,
+                贡献度: 0,
+                平均单品产出: 0
+            };
+            
+            let totalOrders = 0;
+            let totalBuyUv = 0;
+            let totalViewUv = 0;
+            let totalSalesQty = 0;
+            let totalSalesAmount = 0;
+            let totalDiscountRate = 0;
+            
+            filtered.forEach(d => {
+                totalOrders += d.o;
+                totalBuyUv += d.bu;
+                totalViewUv += d.vu;
+                totalSalesQty += d.sq;
+                totalSalesAmount += d.sa;
+                totalDiscountRate += d.dr;
+            });
+            
+            metrics['订单量'] = totalOrders;
+            metrics['销售量'] = totalSalesQty;
+            metrics['销售额'] = totalSalesAmount;
+            // 连带率 = 总销量 / 总订单数
+            metrics['连带率'] = totalOrders > 0 ? (totalSalesQty / totalOrders) : 0;
+            // 浏览购买转化率 = buy_uv / view_uv
+            metrics['浏览购买转化率'] = totalViewUv > 0 ? (totalBuyUv / totalViewUv * 100) : 0;
+            metrics['平均价格'] = totalSalesQty > 0 ? (totalSalesAmount / totalSalesQty) : 0;
+            metrics['平均折扣率'] = filtered.length > 0 ? (totalDiscountRate / filtered.length * 100) : 0;
+            // 贡献度 = 该品类销售额 / 总销售额
+            metrics['贡献度'] = totalSalesAll > 0 ? (totalSalesAmount / totalSalesAll * 100) : 0;
+            // 平均单品产出 = 总销售额 / 该品类销售量
+            metrics['平均单品产出'] = totalSalesQty > 0 ? (totalSalesAmount / totalSalesQty) : 0;
+            
+            return metrics;
+        }
+        
+        // 计算同比增长率
+        function calculateYoY(current, prev) {
+            const yoy = {};
+            
+            // 订单量同比
+            if (prev && prev['订单量'] > 0) {
+                yoy['订单量同比增长'] = ((current['订单量'] - prev['订单量']) / prev['订单量']) * 100;
+            } else {
+                yoy['订单量同比增长'] = null;
+            }
+            
+            // 销售量同比
+            if (prev && prev['销售量'] > 0) {
+                yoy['销售量同比增长'] = ((current['销售量'] - prev['销售量']) / prev['销售量']) * 100;
+            } else {
+                yoy['销售量同比增长'] = null;
+            }
+            
+            // 销售额同比
+            if (prev && prev['销售额'] > 0) {
+                yoy['销售额同比增长'] = ((current['销售额'] - prev['销售额']) / prev['销售额']) * 100;
+            } else {
+                yoy['销售额同比增长'] = null;
+            }
+            
+            // 平均价格同比变化
+            if (prev && prev['平均价格'] > 0) {
+                yoy['平均价格同比变化'] = ((current['平均价格'] - prev['平均价格']) / prev['平均价格']) * 100;
+            } else {
+                yoy['平均价格同比变化'] = null;
+            }
+            
+            return yoy;
+        }
+        
+        // 应用筛选
+        function applyFilters() {
+            const categoryType = document.getElementById('category-type').value;
+            const startDate = document.getElementById('start-date').value;
+            const endDate = document.getElementById('end-date').value;
+            
+            console.log('筛选条件:', {
+                categoryType,
+                subcategories: selectedSubcategories,
+                startDate,
+                endDate
+            });
+            
+            // 检查数据是否可用
+            if (!window.dailyData) {
+                console.error('数据未加载: window.dailyData 不存在');
+                alert('数据加载中，请稍后再试');
+                return;
+            }
+            
+            console.log('数据条数:', window.dailyData.length);
+            
+            // 计算当前时间段指标（传入品类筛选参数）
+            const currentMetrics = calculateMetrics(startDate, endDate, categoryType, selectedSubcategories);
+            
+            if (!currentMetrics) {
+                alert('所选时间段或品类内没有数据');
+                return;
+            }
+            
+            // 计算同比时间段
+            const prevPeriod = getPrevPeriod(startDate, endDate);
+            console.log('同比时间段:', prevPeriod);
+            
+            // 校验：前推时段必须完全在数据可用范围内
+            // 动态检测数据中的实际日期范围，避免硬编码年份出错
+            const allDates = window.dailyData.map(d => d.d).filter((v, i, a) => a.indexOf(v) === i).sort();
+            const DATA_START = allDates[0] || startDate;
+            const DATA_END = allDates[allDates.length - 1] || endDate;
+            
+            let prevMetrics = null;
+            if (prevPeriod.start >= DATA_START && prevPeriod.end <= DATA_END) {
+                prevMetrics = calculateMetrics(prevPeriod.start, prevPeriod.end, categoryType, selectedSubcategories);
+                console.log('同比数据完整，已计算');
+            } else {
+                console.log('同比时间段超出数据范围（', prevPeriod.start, '~', prevPeriod.end, '，数据范围', DATA_START, '~', DATA_END, '），跳过同比计算');
+            }
+            
+            // 计算同比增长率
+            const yoyMetrics = calculateYoY(currentMetrics, prevMetrics);
+            
+            // 更新指标卡
+            updateMetricCards({
+                current: currentMetrics,
+                yoy: yoyMetrics
+            });
+            
+            // 更新趋势图
+            updateTrendChart(startDate, endDate, categoryType, selectedSubcategories);
+            
+            // 更新环形图
+            updatePieChart(startDate, endDate, categoryType, selectedSubcategories);
+            
+            // 更新象限图
+            updateQuadrantChart(startDate, endDate, categoryType, selectedSubcategories);
+            
+            // 更新箱线图
+            updateBoxChart(startDate, endDate, categoryType, selectedSubcategories);
+            
+            // 更新雷达图
+            updateRadarChart(startDate, endDate, categoryType, selectedSubcategories);
+            
+            // 更新热力图
+            updateHeatmapChart(startDate, endDate, categoryType, selectedSubcategories);
+            
+            // 更新3D关联规则图（只响应商品品类选择，活动类型由自身下拉栏控制）
+            // 注意：3D关联规则图在window.onload中已初始化，这里只更新其他图表
+            
+            console.log('当前指标:', currentMetrics);
+            console.log('同比指标:', prevMetrics);
+            console.log('同比增长:', yoyMetrics);
+        }
+        
+        // 计算趋势图数据
+        function calculateTrendData(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            
+            // 筛选日期范围内的数据
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            // 如果选择了具体品类（非"全部"），则按品类筛选
+            if (subcategories && !subcategories.includes('all')) {
+                filtered = filtered.filter(d => {
+                    if (categoryType === '一级分类') {
+                        return subcategories.includes(d.c1);
+                    } else if (categoryType === '二级分类') {
+                        return subcategories.includes(d.c2);
+                    } else if (categoryType === '三级分类') {
+                        return subcategories.includes(d.c3);
+                    } else if (categoryType === '品牌名称') {
+                        return subcategories.includes(d.b);
+                    }
+                    return true;
+                });
+            }
+            
+            // 按日期聚合
+            const dailyMap = new Map();
+            filtered.forEach(d => {
+                if (!dailyMap.has(d.d)) {
+                    dailyMap.set(d.d, { salesAmount: 0, salesQty: 0, orders: 0 });
+                }
+                const item = dailyMap.get(d.d);
+                item.salesAmount += d.sa;
+                item.salesQty += d.sq;
+                item.orders += d.o;
+            });
+            
+            // 排序日期
+            const sortedDates = Array.from(dailyMap.keys()).sort();
+            
+            return {
+                dates: sortedDates,
+                salesAmount: sortedDates.map(d => dailyMap.get(d).salesAmount),
+                salesQty: sortedDates.map(d => dailyMap.get(d).salesQty),
+                orders: sortedDates.map(d => dailyMap.get(d).orders)
+            };
+        }
+        
+        // 更新趋势图
+        function updateTrendChart(startDate, endDate, categoryType, subcategories) {
+            if (!trendChart) return;
+            
+            const trendData = calculateTrendData(startDate, endDate, categoryType, subcategories);
+            
+            if (trendData.dates.length === 0) {
+                console.log('趋势图：无数据');
+                return;
+            }
+            
+            // 格式化日期显示
+            const formattedDates = trendData.dates.map(d => {
+                const date = new Date(d);
+                return (date.getMonth() + 1) + '/' + date.getDate();
+            });
+            
+            trendChart.setOption({
+                xAxis: {
+                    data: formattedDates
+                },
+                series: [
+                    { name: '销售额', data: trendData.salesAmount },
+                    { name: '销售量', data: trendData.salesQty },
+                    { name: '订单量', data: trendData.orders }
+                ]
+            });
+        }
+        
+        // 计算环形图数据（按细分项分组）
+        function calculatePieData(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            
+            // 筛选日期范围内的数据
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            // 确定要显示的细分项
+            let itemsToShow = [];
+            if (subcategories && !subcategories.includes('all')) {
+                itemsToShow = subcategories;
+            } else {
+                // 如果选择了"全部"，则显示该品类类型下的所有项
+                const allItems = new Set();
+                filtered.forEach(d => {
+                    if (categoryType === '一级分类') allItems.add(d.c1);
+                    else if (categoryType === '二级分类') allItems.add(d.c2);
+                    else if (categoryType === '三级分类') allItems.add(d.c3);
+                    else if (categoryType === '品牌名称') allItems.add(d.b);
+                });
+                itemsToShow = Array.from(allItems);
+            }
+            
+            // 按细分项聚合
+            const itemMap = new Map();
+            itemsToShow.forEach(item => {
+                itemMap.set(item, { salesAmount: 0, salesQty: 0, orders: 0 });
+            });
+            
+            filtered.forEach(d => {
+                let itemKey = null;
+                if (categoryType === '一级分类') itemKey = d.c1;
+                else if (categoryType === '二级分类') itemKey = d.c2;
+                else if (categoryType === '三级分类') itemKey = d.c3;
+                else if (categoryType === '品牌名称') itemKey = d.b;
+                
+                if (itemKey && itemMap.has(itemKey)) {
+                    const item = itemMap.get(itemKey);
+                    item.salesAmount += d.sa;
+                    item.salesQty += d.sq;
+                    item.orders += d.o;
+                }
+            });
+            
+            // 计算总计
+            let totalSalesAmount = 0, totalSalesQty = 0, totalOrders = 0;
+            itemMap.forEach(item => {
+                totalSalesAmount += item.salesAmount;
+                totalSalesQty += item.salesQty;
+                totalOrders += item.orders;
+            });
+            
+            // 生成饼图数据
+            const colors = ['#FEC200', '#23D395', '#4896F4', '#FD9972', '#EE80A2', '#B6E880', '#F5D047', '#FFA15A'];
+            const result = [];
+            let idx = 0;
+            itemMap.forEach((value, key) => {
+                result.push({
+                    name: key,
+                    salesAmount: value.salesAmount,
+                    salesQty: value.salesQty,
+                    orders: value.orders,
+                    color: colors[idx % colors.length]
+                });
+                idx++;
+            });
+            
+            return {
+                items: result,
+                totals: {
+                    salesAmount: totalSalesAmount,
+                    salesQty: totalSalesQty,
+                    orders: totalOrders
+                }
+            };
+        }
+        
+        // 更新环形图
+        function updatePieChart(startDate, endDate, categoryType, subcategories) {
+            if (!combinedPieChart) return;
+            
+            const pieData = calculatePieData(startDate, endDate, categoryType, subcategories);
+            
+            if (pieData.items.length === 0) {
+                console.log('环形图：无数据');
+                return;
+            }
+            
+            const items = pieData.items;
+            const totals = pieData.totals;
+            
+            // 构建系列数据
+            const salesData = items.map(item => ({
+                value: totals.salesAmount > 0 ? ((item.salesAmount / totals.salesAmount) * 100).toFixed(1) : 0,
+                name: item.name,
+                itemStyle: { color: item.color }
+            }));
+            
+            const qtyData = items.map(item => ({
+                value: totals.salesQty > 0 ? ((item.salesQty / totals.salesQty) * 100).toFixed(1) : 0,
+                name: item.name,
+                itemStyle: { color: item.color }
+            }));
+            
+            const orderData = items.map(item => ({
+                value: totals.orders > 0 ? ((item.orders / totals.orders) * 100).toFixed(1) : 0,
+                name: item.name,
+                itemStyle: { color: item.color }
+            }));
+            
+            combinedPieChart.setOption({
+                legend: {
+                    type: 'scroll',
+                    orient: 'horizontal',
+                    bottom: '5%',
+                    left: 'center',
+                    right: 'center',
+                    data: items.map(i => i.name),
+                    textStyle: { color: '#fff', fontSize: 10 },
+                    pageIconColor: '#FEC200',
+                    pageTextStyle: { color: '#fff' },
+                    pageIconInactiveColor: '#666'
+                },
+                series: [
+                    {
+                        name: '销售额占比',
+                        data: salesData
+                    },
+                    {
+                        name: '销售量占比',
+                        data: qtyData
+                    },
+                    {
+                        name: '订单量占比',
+                        data: orderData
+                    }
+                ]
+            });
+        }
+        
+        // 计算象限图数据
+        function calculateQuadrantData(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            
+            // 筛选日期范围内的数据
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            // 确定要显示的细分项（显示所有）
+            let itemsToShow = [];
+            if (subcategories && !subcategories.includes('all')) {
+                itemsToShow = subcategories;
+            } else {
+                const allItems = new Set();
+                filtered.forEach(d => {
+                    if (categoryType === '一级分类') allItems.add(d.c1);
+                    else if (categoryType === '二级分类') allItems.add(d.c2);
+                    else if (categoryType === '三级分类') allItems.add(d.c3);
+                    else if (categoryType === '品牌名称') allItems.add(d.b);
+                });
+                itemsToShow = Array.from(allItems);
+            }
+            
+            // 按细分项聚合
+            const itemMap = new Map();
+            itemsToShow.forEach(item => {
+                itemMap.set(item, { viewUv: 0, buyUv: 0, salesAmount: 0 });
+            });
+            
+            filtered.forEach(d => {
+                let itemKey = null;
+                if (categoryType === '一级分类') itemKey = d.c1;
+                else if (categoryType === '二级分类') itemKey = d.c2;
+                else if (categoryType === '三级分类') itemKey = d.c3;
+                else if (categoryType === '品牌名称') itemKey = d.b;
+                
+                if (itemKey && itemMap.has(itemKey)) {
+                    const item = itemMap.get(itemKey);
+                    item.viewUv += d.vu;
+                    item.buyUv += d.bu;
+                    item.salesAmount += d.sa;
+                }
+            });
+            
+            // 生成散点数据 [浏览量, 转化率, 销售额, 细分项名称]
+            const colors = ['#FEC200', '#23D395', '#4896F4', '#FD9972', '#EE80A2', '#B6E880', '#F5D047', '#FFA15A', '#FFEB87', '#C77DFF'];
+            const result = [];
+            let idx = 0;
+            itemMap.forEach((value, key) => {
+                const conversionRate = value.viewUv > 0 ? (value.buyUv / value.viewUv * 100) : 0;
+                result.push({
+                    name: key,
+                    value: [value.viewUv, conversionRate, value.salesAmount],
+                    itemStyle: { color: colors[idx % colors.length], shadowBlur: 10, shadowColor: colors[idx % colors.length] }
+                });
+                idx++;
+            });
+            
+            return result;
+        }
+        
+        // 更新象限图
+        function updateQuadrantChart(startDate, endDate, categoryType, subcategories) {
+            if (!quadrantChart) return;
+            
+            const data = calculateQuadrantData(startDate, endDate, categoryType, subcategories);
+            
+            if (data.length === 0) {
+                console.log('象限图：无数据');
+                return;
+            }
+            
+            quadrantChart.setOption({
+                legend: {
+                    data: data.map(d => d.name)
+                },
+                series: [{
+                    type: 'scatter',
+                    data: data,
+                    symbolSize: val => Math.min(Math.sqrt(val[2]) / 10 + 10, 50)
+                }]
+            });
+        }
+        
+        // 计算箱线图数据（折扣分布）
+        function calculateBoxData(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            
+            // 筛选日期范围内的数据
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            // 确定要显示的细分项（最多5个），按照商品细分筛选栏的原始排序
+            let itemsToShow = [];
+            if (subcategories && !subcategories.includes('all')) {
+                // 按照 categoryData 中的原始顺序排序，只保留选中的项
+                const allItems = categoryData[categoryType] || [];
+                itemsToShow = allItems.filter(item => subcategories.includes(item)).slice(0, 5);
+            } else {
+                // 如果选择了"全部"，则按照 categoryData 中的顺序取前5个
+                itemsToShow = (categoryData[categoryType] || []).slice(0, 5);
+            }
+            
+            // 按细分项收集折扣率数据（dr字段来自order_info表的折扣率）
+            const itemMap = new Map();
+            itemsToShow.forEach(item => {
+                itemMap.set(item, []);
+            });
+            
+            filtered.forEach(d => {
+                let itemKey = null;
+                if (categoryType === '一级分类') itemKey = d.c1;
+                else if (categoryType === '二级分类') itemKey = d.c2;
+                else if (categoryType === '三级分类') itemKey = d.c3;
+                else if (categoryType === '品牌名称') itemKey = d.b;
+                
+                // dr 是折扣率字段（来自order_info表）
+                // 有效范围是0-1（0表示免费，1表示无折扣，0.8表示8折）
+                // 只收集有效的折扣率数据（不为null且在0-1范围内）
+                // 确保转换为数字类型
+                const dr = d.dr !== null && d.dr !== undefined ? Number(d.dr) : null;
+                if (itemKey && itemMap.has(itemKey) && dr !== null && !isNaN(dr) && dr >= 0 && dr <= 1) {
+                    itemMap.get(itemKey).push(dr);
+                }
+            });
+            
+            // 计算箱线图数据 [索引, 最小值, Q1, 中位数, Q3, 最大值]
+            const colors = ['#FEC200', '#23D395', '#4896F4', '#FD9972', '#EE80A2'];
+            const result = [];
+            let idx = 0;
+            itemMap.forEach((values, key) => {
+                if (values.length > 0) {
+                    // 过滤掉任何不在0-1范围内的值（双重保险）
+                    values = values.filter(v => v >= 0 && v <= 1);
+                    if (values.length === 0) return;
+                    
+                    values.sort((a, b) => a - b);
+                    // 确保最小值和最大值都在0-1范围内
+                    const min = Math.max(0, Math.min(1, values[0]));
+                    const max = Math.max(0, Math.min(1, values[values.length - 1]));
+                    const q1 = Math.max(0, Math.min(1, values[Math.floor(values.length * 0.25)]));
+                    const median = Math.max(0, Math.min(1, values[Math.floor(values.length * 0.5)]));
+                    const q3 = Math.max(0, Math.min(1, values[Math.floor(values.length * 0.75)]));
+                    
+                    // 最终检查
+                    if (min > 1 || max > 1) {
+                        console.error('数据异常:', key, 'min=', min, 'max=', max, 'values=', values);
+                        return;
+                    }
+                    
+                    // ECharts箱线图value格式: [min, Q1, median, Q3, max]
+                    result.push({
+                        name: key,
+                        value: [min, q1, median, q3, max],
+                        itemStyle: { color: colors[idx % colors.length], borderColor: colors[idx % colors.length], borderWidth: 2 }
+                    });
+                    idx++;
+                }
+            });
+            
+            return result;
+        }
+        
+        // 更新箱线图
+        function updateBoxChart(startDate, endDate, categoryType, subcategories) {
+            if (!boxChart) return;
+            
+            const data = calculateBoxData(startDate, endDate, categoryType, subcategories);
+            
+            if (data.length === 0) {
+                console.log('箱线图：无数据');
+                return;
+            }
+            
+            boxChart.setOption({
+                legend: {
+                    data: data.map(d => d.name)
+                },
+                xAxis: {
+                    data: data.map(d => d.name)
+                },
+                yAxis: {
+                    min: 0,
+                    max: 1,
+                    name: '折扣率'
+                },
+                series: [{
+                    name: '折扣分布',
+                    type: 'boxplot',
+                    data: data.map(d => {
+                        return {
+                            value: d.value,
+                            itemStyle: d.itemStyle
+                        };
+                    })
+                }]
+            });
+        }
+        
+        // 计算雷达图数据
+        function calculateRadarData(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            let itemsToShow = [];
+            if (subcategories && !subcategories.includes('all')) {
+                const allItems = categoryData[categoryType] || [];
+                itemsToShow = allItems.filter(item => subcategories.includes(item)).slice(0, 5);
+            } else {
+                itemsToShow = (categoryData[categoryType] || []).slice(0, 5);
+            }
+            
+            const itemMap = new Map();
+            itemsToShow.forEach(item => {
+                itemMap.set(item, { buy_uv: 0, view_uv: 0, sa: 0, da: 0, sq: 0, o: 0, rp_sum: 0, rp_cnt: 0, c1vu: 0 });
+            });
+            
+            filtered.forEach(d => {
+                let itemKey = null;
+                if (categoryType === '一级分类') itemKey = d.c1;
+                else if (categoryType === '二级分类') itemKey = d.c2;
+                else if (categoryType === '三级分类') itemKey = d.c3;
+                else if (categoryType === '品牌名称') itemKey = d.b;
+                
+                if (itemKey && itemMap.has(itemKey)) {
+                    const s = itemMap.get(itemKey);
+                    s.buy_uv += d.bu || 0;
+                    s.view_uv += d.vu || 0;
+                    s.sa += d.sa || 0;
+                    s.da += d.da || 0;
+                    s.sq += d.sq || 0;
+                    s.o += d.o || 0;
+                    s.rp_sum += d.rp || 0;
+                    s.rp_cnt += (d.rp > 0 ? 1 : 0);
+                    s.c1vu = Math.max(s.c1vu, d.c1vu || 0);
+                }
+            });
+            
+            const colors = ['#FEC200', '#23D395', '#4896F4', '#FD9972', '#EE80A2'];
+            const result = [];
+            let idx = 0;
+            
+            itemMap.forEach((s, key) => {
+                if (s.view_uv > 0 || s.sa > 0) {
+                    const conversion = s.view_uv > 0 ? (s.buy_uv / s.view_uv) * 100 : 0;
+                    const repurchase = s.rp_cnt > 0 ? (s.rp_sum / s.rp_cnt) * 100 : 0;
+                    const discountDep = s.sa > 0 ? (s.da / s.sa) * 100 : 0;
+                    const bundle = s.o > 0 ? Math.min((s.sq / s.o) / 10 * 100, 100) : 0;
+                    
+                    // 计算销量集中度（商品细分类别销量占类目总销量比例）
+                    // 首先计算类目总销量
+                    let totalSales = 0;
+                    itemMap.forEach((itemData) => {
+                        totalSales += itemData.sa;
+                    });
+                    const salesConcentration = totalSales > 0 ? (s.sa / totalSales) * 100 : 0;
+                    
+                    result.push({
+                        name: key,
+                        value: [Math.min(conversion, 100), Math.min(repurchase, 100), Math.min(discountDep, 100), bundle, Math.min(salesConcentration, 100)],
+                        itemStyle: { color: colors[idx % colors.length] },
+                        lineStyle: { color: colors[idx % colors.length], width: 2 },
+                        areaStyle: { color: colors[idx % colors.length], opacity: 0.3 }
+                    });
+                    idx++;
+                }
+            });
+            
+            return result;
+        }
+        
+        // 更新雷达图
+        function updateRadarChart(startDate, endDate, categoryType, subcategories) {
+            if (!radarChart) return;
+            
+            const data = calculateRadarData(startDate, endDate, categoryType, subcategories);
+            
+            radarChart.setOption({
+                legend: { data: data.map(d => d.name) },
+                series: [{ data: data }]
+            });
+        }
+        
+        // 计算热力图数据
+        function calculateHeatmapData(startDate, endDate, categoryType, subcategories) {
+            const data = window.dailyData || [];
+            let filtered = data.filter(d => d.d >= startDate && d.d <= endDate);
+            
+            // 确定要显示的品类（Y轴，最多5个）
+            let categoriesToShow = [];
+            if (subcategories && !subcategories.includes('all')) {
+                const allItems = categoryData[categoryType] || [];
+                categoriesToShow = allItems.filter(item => subcategories.includes(item)).slice(0, 5);
+            } else {
+                categoriesToShow = (categoryData[categoryType] || []).slice(0, 5);
+            }
+            
+            // 确定子品类（X轴）
+            let subCategoryField = '';
+            let subCategoryLabels = [];
+            
+            if (categoryType === '一级分类') {
+                subCategoryField = 'c2'; // 二级分类
+            } else if (categoryType === '二级分类') {
+                subCategoryField = 'c3'; // 三级分类
+            } else if (categoryType === '三级分类') {
+                subCategoryField = 'b'; // 品牌名称
+            } else if (categoryType === '品牌名称') {
+                subCategoryField = 'sku'; // SKUID - 需要从原始数据获取
+            }
+            
+            // 收集每个品类下的子品类销售量
+            const categorySubMap = new Map();
+            categoriesToShow.forEach(cat => {
+                categorySubMap.set(cat, new Map());
+            });
+            
+            filtered.forEach(d => {
+                let catKey = null;
+                if (categoryType === '一级分类') catKey = d.c1;
+                else if (categoryType === '二级分类') catKey = d.c2;
+                else if (categoryType === '三级分类') catKey = d.c3;
+                else if (categoryType === '品牌名称') catKey = d.b;
+                
+                if (catKey && categorySubMap.has(catKey)) {
+                    let subKey = null;
+                    if (subCategoryField === 'c2') subKey = d.c2;
+                    else if (subCategoryField === 'c3') subKey = d.c3;
+                    else if (subCategoryField === 'b') subKey = d.b;
+                    else if (subCategoryField === 'sku') subKey = d.sku;  // SKUID
+                    
+                    if (subKey) {
+                        const subMap = categorySubMap.get(catKey);
+                        subMap.set(subKey, (subMap.get(subKey) || 0) + (d.sq || 0));
+                    }
+                }
+            });
+            
+            // 获取所有子品类并排序（按总销售量取前10）
+            const allSubCategories = new Map();
+            categorySubMap.forEach((subMap, cat) => {
+                subMap.forEach((sq, sub) => {
+                    allSubCategories.set(sub, (allSubCategories.get(sub) || 0) + sq);
+                });
+            });
+            
+            const topSubCategories = Array.from(allSubCategories.entries())
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10)
+                .map(([sub]) => sub);
+            
+            // 计算热力图数据 [x索引, y索引, 占比]
+            const heatmapData = [];
+            categoriesToShow.forEach((cat, yIdx) => {
+                const subMap = categorySubMap.get(cat);
+                const totalSq = Array.from(subMap.values()).reduce((a, b) => a + b, 0);
+                
+                topSubCategories.forEach((sub, xIdx) => {
+                    const sq = subMap.get(sub) || 0;
+                    const percentage = totalSq > 0 ? (sq / totalSq) * 100 : 0;
+                    heatmapData.push({
+                        value: [xIdx, yIdx, parseFloat(percentage.toFixed(1))],
+                        name: cat + ' - ' + sub
+                    });
+                });
+            });
+            
+            return {
+                yAxis: categoriesToShow,
+                xAxis: topSubCategories,
+                data: heatmapData.map(d => d.value)
+            };
+        }
+        
+        // 更新热力图
+        function updateHeatmapChart(startDate, endDate, categoryType, subcategories) {
+            if (!heatmapChart) return;
+            
+            const result = calculateHeatmapData(startDate, endDate, categoryType, subcategories);
+            
+            heatmapChart.setOption({
+                xAxis: { data: result.xAxis },
+                yAxis: { data: result.yAxis },
+                series: [{ data: result.data }]
+            });
+        }
+        
+        // 3D关联规则数据（全局变量）
+        let associationRulesData = null;
+        let relationChart = null;
+        
+        // 初始化空的3D图
+        function initRelationChart3D() {
+            // 不再在这里设置内容，由loadAssociationRulesData处理
+        }
+        
+        // 更新3D关联规则图 - 使用Python预计算的NetworkX spring_layout位置
+        async function updateRelationChart3D(categoryType, activityType) {
+            const chartDiv = document.getElementById('relationChart');
+            
+            if (!associationRulesData) {
+                chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;font-size:12px;">数据未加载</div>';
+                return;
+            }
+            
+            // 获取对应层级和活动类型的数据
+            const levelData = associationRulesData[categoryType];
+            if (!levelData) {
+                chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#888;font-size:12px;">无' + categoryType + '数据</div>';
+                return;
+            }
+            
+            const data = levelData[activityType];
+            if (!data || !data.nodes || data.nodes.length === 0) {
+                chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#888;font-size:12px;">当前条件下无关联规则数据</div>';
+                return;
+            }
+            
+            const nodes = data.nodes;
+            const edges = data.edges;
+            
+            // 显示进度条
+            let progress = 0;
+            const updateProgress = (percent, message) => {
+                progress = percent;
+                chartDiv.innerHTML = `
+                    <div style="display:flex;flex-direction:column;justify-content:center;align-items:center;height:100%;color:#fff;">
+                        <div style="font-size:14px;margin-bottom:15px;">${message}</div>
+                        <div style="width:200px;height:6px;background:rgba(255,255,255,0.2);border-radius:3px;overflow:hidden;">
+                            <div style="width:${progress}%;height:100%;background:linear-gradient(90deg,#FEC200,#FD9972);transition:width 0.3s;"></div>
+                        </div>
+                        <div style="font-size:12px;margin-top:8px;color:rgba(255,255,255,0.7);">${Math.round(progress)}%</div>
+                    </div>
+                `;
+            };
+            
+            // 步骤1: 准备节点数据 (使用预计算的NetworkX位置)
+            updateProgress(30, '准备节点数据...');
+            await new Promise(r => setTimeout(r, 50));
+            
+            // 构建节点位置映射 (直接使用Python计算的spring_layout位置)
+            const nodePositions = {};
+            nodes.forEach(node => {
+                // 检查节点是否有坐标值，如果没有则使用默认值
+                nodePositions[node.id] = {
+                    x: node.x !== undefined ? node.x : (Math.random() - 0.5) * 2,
+                    y: node.y !== undefined ? node.y : (Math.random() - 0.5) * 2,
+                    z: node.z !== undefined ? node.z : (Math.random() - 0.5) * 2
+                };
+            });
+            
+            // 步骤2: 生成节点提示框内容 (优化：使用Map避免双重循环)
+            updateProgress(50, '生成节点提示...');
+            await new Promise(r => setTimeout(r, 10));
+            
+            // 预构建边索引，避免O(n*m)循环
+            const edgesBySource = {};
+            edges.forEach(e => {
+                if (!edgesBySource[e.source]) edgesBySource[e.source] = [];
+                edgesBySource[e.source].push(e);
+            });
+            
+            const nodeHoverText = {};
+            nodes.forEach(node => {
+                const nodeEdges = edgesBySource[node.id] || [];
+                if (nodeEdges.length > 0) {
+                    const ruleDetails = nodeEdges.slice(0, 5).map(e => 
+                        `  → ${e.target} (支持度: ${e.support.toFixed(4)}, 置信度: ${e.confidence.toFixed(2)})`
+                    ).join('<br>');
+                    const moreText = nodeEdges.length > 5 ? `<br>  ... 还有${nodeEdges.length - 5}条规则` : '';
+                    nodeHoverText[node.id] = `<b>节点: ${node.name}</b><br>相关关联规则 (作为前项):<br>${ruleDetails}${moreText}`;
+                } else {
+                    nodeHoverText[node.id] = `<b>节点: ${node.name}</b><br>无后续关联规则`;
+                }
+            });
+            
+            // 步骤3: 生成连线和节点数据 (优化：批量合并线段)
+            updateProgress(70, '生成图形数据...');
+            await new Promise(r => setTimeout(r, 10));
+            
+            // 收缩因子 - 连线不从球心出发
+            const shrinkFactor = 0.08;
+            
+            // 构建Plotly数据
+            const traces = [];
+            const colors = ['#FEC200', '#F5D047', '#FFEB87', '#23D395', '#FD9972', '#FFA15A', '#4896F4', '#EE80A2', '#B6E880'];
+            
+            // 计算lift范围
+            const lifts = edges.map(e => e.lift);
+            const maxLift = Math.max(...lifts);
+            const minLift = Math.min(...lifts);
+            
+            // 优化：将所有连线合并为单个trace，使用null分隔不同线段
+            const lineX = [], lineY = [], lineZ = [], lineColors = [], lineWidths = [];
+            edges.forEach(edge => {
+                const source = nodePositions[edge.source];
+                const target = nodePositions[edge.target];
+                if (source && target) {
+                    const dx = target.x - source.x;
+                    const dy = target.y - source.y;
+                    const dz = target.z - source.z;
+                    
+                    // 缩短连线两端
+                    const x0 = source.x + shrinkFactor * dx;
+                    const y0 = source.y + shrinkFactor * dy;
+                    const z0 = source.z + shrinkFactor * dz;
+                    const x1 = target.x - shrinkFactor * dx;
+                    const y1 = target.y - shrinkFactor * dy;
+                    const z1 = target.z - shrinkFactor * dz;
+                    
+                    // 连线颜色基于lift
+                    let colorVal = 100;
+                    if (maxLift > minLift) {
+                        colorVal = 50 + ((edge.lift - minLift) / (maxLift - minLift) * 150);
+                    }
+                    
+                    lineX.push(x0, x1, null);
+                    lineY.push(y0, y1, null);
+                    lineZ.push(z0, z1, null);
+                    lineColors.push(`rgba(${colorVal},${colorVal},${colorVal},0.6)`);
+                    lineWidths.push(Math.max(1, edge.confidence * 5));
+                }
+            });
+            
+            // 使用单一trace绘制所有连线
+            if (lineX.length > 0) {
+                traces.push({
+                    type: 'scatter3d',
+                    mode: 'lines',
+                    x: lineX,
+                    y: lineY,
+                    z: lineZ,
+                    line: {
+                        color: 'rgba(150,150,150,0.4)',
+                        width: 1
+                    },
+                    hoverinfo: 'none',
+                    showlegend: false
+                });
+            }
+            
+            // 按类别分组绘制节点
+            const uniqueCats = [...new Set(nodes.map(n => n.category))];
+            const catToColor = {};
+            uniqueCats.forEach((cat, i) => {
+                catToColor[cat] = colors[i % colors.length];
+            });
+            
+            uniqueCats.forEach(cat => {
+                const catNodes = nodes.filter(n => n.category === cat);
+                const color = catToColor[cat];
+                
+                traces.push({
+                    type: 'scatter3d',
+                    mode: 'markers+text',
+                    x: catNodes.map(n => nodePositions[n.id].x),
+                    y: catNodes.map(n => nodePositions[n.id].y),
+                    z: catNodes.map(n => nodePositions[n.id].z),
+                    text: catNodes.map(n => n.name),
+                    textposition: 'top center',
+                    textfont: { color: '#fff', size: 9 },
+                    marker: {
+                        size: catNodes.map(n => Math.max(5, (n.support || 0.01) * 500)),
+                        color: color,
+                        line: { color: 'black', width: 0.5 }
+                    },
+                    name: cat,
+                    hoverinfo: 'text',
+                    hovertext: catNodes.map(n => nodeHoverText[n.id])
+                });
+            });
+            
+            // 步骤4: 渲染图形
+            updateProgress(90, '渲染3D图形...');
+            
+            const layout = {
+                paper_bgcolor: 'rgba(0,0,0,0)',
+                plot_bgcolor: 'rgba(0,0,0,0)',
+                margin: { l: 0, r: 0, t: 30, b: 0 },
+                scene: {
+                    xaxis: { showgrid: false, zeroline: false, showticklabels: false, title: '' },
+                    yaxis: { showgrid: false, zeroline: false, showticklabels: false, title: '' },
+                    zaxis: { showgrid: false, zeroline: false, showticklabels: false, title: '' },
+                    bgcolor: 'rgba(0,0,0,0)',
+                    camera: { 
+                        eye: { x: 1.5, y: 1.5, z: 1.2 },
+                        autorotate: true,
+                        autorotateSpeed: 2 
+                    },
+                    aspectmode: 'data',
+                    dragmode: 'orbit'
+                },
+                showlegend: false,
+                title: { 
+                    text: `${categoryType} - ${activityType}`, 
+                    font: { color: '#fff', size: 12 } 
+                },
+                hoverlabel: { bgcolor: 'white', font: { color: '#000', size: 12 }, align: 'left' },
+                autosize: true
+            };
+            
+            const config = { 
+                responsive: true, 
+                displayModeBar: false,
+                scrollZoom: true
+            };
+            
+            // 调试信息
+            console.log('Plotly对象:', typeof Plotly);
+            console.log('traces数组长度:', traces.length);
+            console.log('traces数组:', traces);
+            console.log('容器尺寸:', chartDiv.clientWidth, 'x', chartDiv.clientHeight);
+            console.log('布局:', layout);
+            console.log('配置:', config);
+            // 使用 requestAnimationFrame 避免阻塞UI
+            await new Promise(resolve => {
+                requestAnimationFrame(() => {
+                    // 先更新进度条到100%
+                    updateProgress(100, '渲染完成...');
+                    // 短暂延迟后再渲染，让用户看到100%的进度
+                    setTimeout(() => {
+                        try {
+                            // 确保容器是空的，清除进度条内容
+                            chartDiv.innerHTML = '';
+                            // 检查Plotly是否存在
+                            if (typeof Plotly === 'undefined') {
+                                throw new Error('Plotly库未加载');
+                            }
+                            // 检查traces是否有数据
+                            if (traces.length === 0) {
+                                throw new Error('没有数据可渲染');
+                            }
+                            console.log('开始渲染3D图表，traces数量:', traces.length);
+                            console.log('图表容器:', chartDiv);
+                            
+                            // 确保容器有足够的尺寸
+                            chartDiv.style.width = '100%';
+                            console.log('容器尺寸:', chartDiv.clientWidth, 'x', chartDiv.clientHeight);
+                            
+                            // 尝试创建新图表
+                            try {
+                                console.log('开始调用Plotly.newPlot');
+                                const plot = Plotly.newPlot(chartDiv, traces, layout, config);
+                                console.log('Plotly.newPlot调用成功，返回:', plot);
+                                
+                                plot.then((gd) => {
+                                    console.log('3D图表渲染成功，返回的图表对象:', gd);
+                                    relationChart = gd;
+
+                                    // 手动实现自动旋转（支持悬停暂停）
+                                    let angle = 0;
+                                    let isRotating = true;
+                                    let rafId = null;
+                                    const radius = Math.sqrt(1.5*1.5 + 1.5*1.5);
+                                    
+                                    function autoRotate() {
+                                        if (!relationChart || !isRotating) { rafId = null; return; }
+                                        angle += 0.008;
+                                        const eyeX = radius * Math.cos(angle);
+                                        const eyeY = radius * Math.sin(angle);
+                                        Plotly.relayout(gd, {
+                                            'scene.camera.eye.x': eyeX,
+                                            'scene.camera.eye.y': eyeY,
+                                            'scene.camera.eye.z': 1.2
+                                        });
+                                        rafId = requestAnimationFrame(autoRotate);
+                                    }
+                                    
+                                    // 鼠标进入时停止旋转
+                                    chartDiv.addEventListener('mouseenter', () => {
+                                        isRotating = false;
+                                        if (rafId) cancelAnimationFrame(rafId);
+                                    });
+                                    // 鼠标移开后恢复旋转
+                                    chartDiv.addEventListener('mouseleave', () => {
+                                        isRotating = true;
+                                        autoRotate();
+                                    });
+                                    
+                                    autoRotate();
+
+                                    resolve();
+                                }).catch(error => {
+                                    console.error('3D图表渲染失败:', error);
+                                    chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;font-size:12px;">图表渲染失败: ' + error.message + '</div>';
+                                    resolve();
+                                });
+                            } catch (error) {
+                                console.error('调用Plotly.newPlot时出错:', error);
+                                chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;font-size:12px;">图表渲染失败: ' + error.message + '</div>';
+                                resolve();
+                            }
+                        } catch (error) {
+                            console.error('3D图表渲染准备失败:', error);
+                            chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;font-size:12px;">图表渲染失败: ' + error.message + '</div>';
+                            resolve();
+                        }
+                    }, 300);
+                });
+            });
+        }
+        
+        // 加载关联规则JSON数据（使用预计算3D布局）
+        async function loadAssociationRulesData() {
+            const chartDiv = document.getElementById('relationChart');
+            try {
+                chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#fff;font-size:14px;">正在加载数据...</div>';
+                
+                // 尝试多个路径加载JSON文件
+                const paths = [
+                    'association_rules_3d.json',
+                    './association_rules_3d.json',
+                    window.location.pathname.replace(/\/[^\/]*$/, '') + '/association_rules_3d.json'
+                ];
+                
+                let lastError = null;
+                for (const path of paths) {
+                    try {
+                        console.log('尝试加载:', path);
+                        const response = await fetch(path);
+                        if (response.ok) {
+                            associationRulesData = await response.json();
+                            console.log('关联规则数据加载完成:', Object.keys(associationRulesData));
+                            return true;
+                        }
+                    } catch (e) {
+                        lastError = e;
+                        console.warn('路径加载失败:', path, e.message);
+                    }
+                }
+                
+                throw lastError || new Error('所有路径都无法加载数据');
+            } catch (error) {
+                console.error('加载关联规则数据失败:', error);
+                chartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#ff6b6b;font-size:12px;flex-direction:column;"><div>数据加载失败</div><div style="margin-top:8px;color:#888;">' + error.message + '</div><div style="margin-top:8px;color:#666;font-size:11px;">请确保通过HTTP服务器访问此页面</div></div>';
+                return false;
+            }
+        }
+        
+        function initCharts() {
+            // 趋势图 - 销售额、销售量、订单量
+            trendChart = echarts.init(document.getElementById('trendChart'));
+            trendChart.setOption({
+                color: ['#FEC200', '#23D395', '#4896F4'],
+                tooltip: { 
+                    trigger: 'axis',
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    borderColor: '#FEC200',
+                    textStyle: { color: '#fff' },
+                    formatter: function(params) {
+                        let result = params[0].axisValue + '<br/>';
+                        params.forEach(item => {
+                            let value = item.value;
+                            if (item.seriesName === '销售额') {
+                                value = '¥' + value.toLocaleString();
+                            } else {
+                                value = value.toLocaleString();
+                            }
+                            result += item.marker + ' ' + item.seriesName + ': ' + value + '<br/>';
+                        });
+                        return result;
+                    }
+                },
+                legend: { 
+                    data: ['销售额', '销售量', '订单量'],
+                    textStyle: { color: '#fff' },
+                    top: 10
+                },
+                grid: { left: '3%', right: '3%', bottom: '3%', top: '15%', containLabel: true },
+                xAxis: { 
+                    type: 'category', 
+                    boundaryGap: false, 
+                    data: ['9/1', '9/8', '9/15', '9/22', '9/29', '10/6', '10/13', '10/20', '10/27', '11/3', '11/10', '11/17', '11/24'],
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { color: 'rgba(255,255,255,0.7)' }
+                },
+                yAxis: [
+                    {
+                        type: 'value',
+                        name: '销售额',
+                        position: 'left',
+                        axisLine: { lineStyle: { color: '#FEC200' } },
+                        axisLabel: { 
+                            color: '#FEC200',
+                            formatter: function(value) {
+                                if (value >= 10000) return (value / 10000) + '万';
+                                return value;
+                            }
+                        },
+                        splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } }
+                    },
+                    {
+                        type: 'value',
+                        name: '销售量/订单量',
+                        position: 'right',
+                        axisLine: { lineStyle: { color: '#23D395' } },
+                        axisLabel: { 
+                            color: '#23D395',
+                            formatter: function(value) {
+                                if (value >= 10000) return (value / 10000) + '万';
+                                return value;
+                            }
+                        },
+                        splitLine: { show: false }
+                    }
+                ],
+                series: [
+                    { 
+                        name: '销售额', 
+                        type: 'line', 
+                        smooth: true, 
+                        yAxisIndex: 0,
+                        lineStyle: { width: 3, color: '#FEC200' }, 
+                        itemStyle: { color: '#FEC200' }, 
+                        areaStyle: { color: { type: 'linear', x: 0, y: 0, x2: 0, y2: 1, colorStops: [{ offset: 0, color: 'rgba(254, 194, 0, 0.3)' }, { offset: 1, color: 'rgba(254, 194, 0, 0.05)' }] } }, 
+                        data: [450000, 480000, 460000, 520000, 580000, 750000, 720000, 780000, 800000, 820000, 850000, 880000, 900000] 
+                    },
+                    { 
+                        name: '销售量', 
+                        type: 'line', 
+                        smooth: true, 
+                        yAxisIndex: 1,
+                        lineStyle: { width: 3, color: '#23D395' }, 
+                        itemStyle: { color: '#23D395' }, 
+                        data: [25000, 28000, 26000, 30000, 32000, 38000, 36000, 40000, 42000, 43000, 45000, 46000, 48000] 
+                    },
+                    { 
+                        name: '订单量', 
+                        type: 'line', 
+                        smooth: true, 
+                        yAxisIndex: 1,
+                        lineStyle: { width: 3, color: '#4896F4' }, 
+                        itemStyle: { color: '#4896F4' }, 
+                        data: [12000, 13500, 12800, 15000, 16000, 19000, 18000, 20000, 21000, 21500, 22500, 23000, 24000] 
+                    }
+                ]
+            });
+            
+            // 合并的三个环形图
+            combinedPieChart = echarts.init(document.getElementById('combinedPieChart'));
+            combinedPieChart.setOption({
+                color: meituanColors,
+                tooltip: { 
+                    trigger: 'item',
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    borderColor: '#FEC200',
+                    textStyle: { color: '#fff' }
+                },
+                legend: { 
+                    type: 'scroll',
+                    orient: 'horizontal', 
+                    bottom: '5%',
+                    left: 'center',
+                    right: 'center',
+                    data: ['饮料与冲调', '食品', '其他'],
+                    textStyle: { color: '#fff', fontSize: 10 },
+                    pageIconColor: '#FEC200',
+                    pageTextStyle: { color: '#fff' },
+                    pageIconInactiveColor: '#666'
+                },
+                series: [
+                    {
+                        name: '销售额占比', type: 'pie', radius: ['30%', '50%'], center: ['20%', '45%'],
+                        itemStyle: { borderRadius: 5, borderColor: '#1a1a2e', borderWidth: 2 },
+                        label: { show: true, position: 'center', formatter: '销售额\n{c}%', color: '#fff', fontSize: 12, fontWeight: 'bold' },
+                        data: [
+                            { value: 45, name: '饮料与冲调', itemStyle: { color: '#FEC200' } }, 
+                            { value: 30, name: '食品', itemStyle: { color: '#23D395' } }, 
+                            { value: 25, name: '其他', itemStyle: { color: '#4896F4' } }
+                        ]
+                    },
+                    {
+                        name: '销售量占比', type: 'pie', radius: ['30%', '50%'], center: ['50%', '45%'],
+                        itemStyle: { borderRadius: 5, borderColor: '#1a1a2e', borderWidth: 2 },
+                        label: { show: true, position: 'center', formatter: '销售量\n{c}%', color: '#fff', fontSize: 12, fontWeight: 'bold' },
+                        data: [
+                            { value: 40, name: '饮料与冲调', itemStyle: { color: '#FD9972' } }, 
+                            { value: 35, name: '食品', itemStyle: { color: '#EE80A2' } }, 
+                            { value: 25, name: '其他', itemStyle: { color: '#B6E880' } }
+                        ]
+                    },
+                    {
+                        name: '订单量占比', type: 'pie', radius: ['30%', '50%'], center: ['80%', '45%'],
+                        itemStyle: { borderRadius: 5, borderColor: '#1a1a2e', borderWidth: 2 },
+                        label: { show: true, position: 'center', formatter: '订单量\n{c}%', color: '#fff', fontSize: 12, fontWeight: 'bold' },
+                        data: [
+                            { value: 35, name: '饮料与冲调', itemStyle: { color: '#F5D047' } }, 
+                            { value: 40, name: '食品', itemStyle: { color: '#FFA15A' } }, 
+                            { value: 25, name: '其他', itemStyle: { color: '#FFEB87' } }
+                        ]
+                    }
+                ]
+            });
+            
+            initRelationChart3D();
+            
+            // 象限图
+            quadrantChart = echarts.init(document.getElementById('quadrantChart'));
+            quadrantChart.setOption({
+                color: meituanColors,
+                tooltip: { 
+                    trigger: 'item', 
+                    formatter: function(params) {
+                        return params.name + '<br/>浏览量: ' + params.value[0].toLocaleString() + '<br/>转化率: ' + params.value[1].toFixed(2) + '%<br/>销售额: ¥' + params.value[2].toLocaleString();
+                    },
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    borderColor: '#FEC200',
+                    textStyle: { color: '#fff' }
+                },
+                legend: {
+                    type: 'scroll',
+                    orient: 'vertical',
+                    left: 0,
+                    top: 'middle',
+                    data: [],
+                    textStyle: { color: '#fff', fontSize: 10 },
+                    itemWidth: 12,
+                    itemHeight: 8,
+                    pageTextStyle: { color: '#fff' }
+                },
+                grid: { left: '12%', right: '5%', bottom: '12%', top: '8%', containLabel: true },
+                xAxis: { 
+                    type: 'value', 
+                    name: '浏览量', 
+                    nameTextStyle: { color: '#fff' },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { 
+                        color: 'rgba(255,255,255,0.7)',
+                        interval: 'auto',
+                        formatter: function(value) {
+                            if (value >= 10000) return (value / 10000) + '万';
+                            return value;
+                        }
+                    },
+                    splitLine: { show: true, lineStyle: { type: 'dashed', color: 'rgba(255,255,255,0.1)' } } 
+                },
+                yAxis: { 
+                    type: 'value', 
+                    name: '转化率（%）', 
+                    nameTextStyle: { color: '#fff' },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { color: 'rgba(255,255,255,0.7)' },
+                    splitLine: { show: true, lineStyle: { type: 'dashed', color: 'rgba(255,255,255,0.1)' } } 
+                },
+                series: []
+            });
+            
+            // 箱线图 - 商品折扣分布
+            boxChart = echarts.init(document.getElementById('boxChart'));
+            boxChart.setOption({
+                color: meituanColors,
+                tooltip: {
+                    trigger: 'item',
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    borderColor: '#FEC200',
+                    textStyle: { color: '#fff' },
+                    formatter: function(params) {
+                        if (params.componentType === 'series') {
+                            // 打印完整params对象用于调试
+                            console.log('tooltip params:', JSON.stringify(params));
+                            // 从params.data获取原始数据（如果可用）
+                            let val = null;
+                            if (params.data && Array.isArray(params.data)) {
+                                val = params.data;
+                            } else if (params.data && Array.isArray(params.data.value)) {
+                                val = params.data.value;
+                            } else if (Array.isArray(params.value)) {
+                                val = params.value;
+                            }
+                            
+                            console.log('val:', val, 'length:', val ? val.length : 'null');
+                            
+                            if (val && Array.isArray(val)) {
+                                // 尝试识别正确的5个数值（排除可能的索引）
+                                // 找到最小值和最大值来确定范围
+                                const nums = val.filter(v => typeof v === 'number');
+                                if (nums.length >= 5) {
+                                    return params.name + 
+                                        '<br/>最低: ' + Math.min(...nums.slice(-5)).toFixed(2) +
+                                        '<br/>Q1: ' + nums[nums.length - 4].toFixed(2) +
+                                        '<br/>中位数: ' + nums[nums.length - 3].toFixed(2) +
+                                        '<br/>Q3: ' + nums[nums.length - 2].toFixed(2) +
+                                        '<br/>最高: ' + Math.max(...nums.slice(-5)).toFixed(2);
+                                }
+                            }
+                        }
+                        return params.name;
+                    }
+                },
+                legend: {
+                    type: 'scroll',
+                    orient: 'vertical',
+                    right: 0,
+                    top: 'middle',
+                    data: [],
+                    textStyle: { color: '#fff', fontSize: 10 },
+                    itemWidth: 12,
+                    itemHeight: 8,
+                    pageTextStyle: { color: '#fff' }
+                },
+                grid: { left: '12%', right: '18%', bottom: '8%', top: '8%', containLabel: true },
+                xAxis: { 
+                    type: 'category', 
+                    data: [],
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { 
+                        color: 'rgba(255,255,255,0.7)',
+                        formatter: function(value) {
+                            // 只显示前两个字，多出来的用...代替
+                            if (value.length > 2) {
+                                return value.substring(0, 2) + '...';
+                            }
+                            return value;
+                        }
+                    }
+                },
+                yAxis: { 
+                    type: 'value', 
+                    name: '折扣率',
+                    nameTextStyle: { color: '#fff' },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { color: 'rgba(255,255,255,0.7)', formatter: '{value}' },
+                    splitLine: { lineStyle: { color: 'rgba(255,255,255,0.1)' } },
+                    min: 0,
+                    max: 1
+                },
+                series: []
+            });
+            
+            // 雷达图
+            radarChart = echarts.init(document.getElementById('radarChart'));
+            radarChart.setOption({
+                color: meituanColors,
+                tooltip: {
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    borderColor: '#FEC200',
+                    textStyle: { color: '#fff' },
+                    formatter: function(params) {
+                        let result = params.name + '<br/>';
+                        const indicators = ['浏览购买转化率', '复购率', '折扣依赖度', '连带率', '销量集中度'];
+                        params.value.forEach((val, idx) => {
+                            result += indicators[idx] + ': ' + val.toFixed(1) + '%<br/>';
+                        });
+                        return result;
+                    }
+                },
+                legend: { 
+                    type: 'scroll',
+                    orient: 'vertical',
+                    left: 0,
+                    top: 'middle',
+                    data: [],
+                    textStyle: { color: '#fff', fontSize: 10 },
+                    itemWidth: 12,
+                    itemHeight: 8,
+                    pageTextStyle: { color: '#fff' }
+                },
+                radar: { 
+                    indicator: [
+                        { name: '浏览购买转化率', max: 100 }, 
+                        { name: '复购率', max: 100 }, 
+                        { name: '折扣依赖度', max: 100 }, 
+                        { name: '连带率', max: 100 }, 
+                        { name: '销量集中度', max: 100 }
+                    ],
+                    axisName: { color: 'rgba(255,255,255,0.7)', fontSize: 10 },
+                    splitArea: { areaStyle: { color: ['rgba(254, 194, 0, 0.05)', 'rgba(254, 194, 0, 0.1)'] } },
+                    axisLine: { lineStyle: { color: 'rgba(254, 194, 0, 0.3)' } },
+                    splitLine: { lineStyle: { color: 'rgba(254, 194, 0, 0.2)' } }
+                },
+                series: [{
+                    type: 'radar',
+                    data: []
+                }]
+            });
+            
+            // 热力图
+            heatmapChart = echarts.init(document.getElementById('heatmapChart'));
+            heatmapChart.setOption({
+                tooltip: { 
+                    position: 'top',
+                    backgroundColor: 'rgba(26, 26, 46, 0.9)',
+                    borderColor: '#FEC200',
+                    textStyle: { color: '#fff' },
+                    formatter: function(params) {
+                        return params.name + '<br/>销售量占比: ' + params.value[2].toFixed(1) + '%';
+                    }
+                },
+                grid: { height: '60%', top: '10%', left: '15%', right: '10%' },
+                xAxis: { 
+                    type: 'category', 
+                    data: [],
+                    splitArea: { show: true },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10, rotate: 30 }
+                },
+                yAxis: { 
+                    type: 'category', 
+                    data: [],
+                    splitArea: { show: true },
+                    axisLine: { lineStyle: { color: 'rgba(255,255,255,0.3)' } },
+                    axisLabel: { color: 'rgba(255,255,255,0.7)', fontSize: 10 }
+                },
+                visualMap: { 
+                    min: 0, 
+                    max: 100, 
+                    calculable: true, 
+                    orient: 'vertical', 
+                    left: 'right', 
+                    top: 'middle',
+                    textStyle: { color: '#fff' },
+                    inRange: { color: ['#FFEB87', '#FD9972'] },
+                    text: ['高', '低'],
+                    formatter: '{value}%'
+                },
+                series: [{
+                    name: '销售量占比',
+                    type: 'heatmap',
+                    data: [],
+                    label: { show: false }
+                }]
+            });
+            
+            // 响应式
+            window.addEventListener('resize', () => {
+                trendChart.resize();
+                combinedPieChart.resize();
+                quadrantChart.resize();
+                boxChart.resize();
+                radarChart.resize();
+                heatmapChart.resize();
+                if (modalChart) modalChart.resize();
+                // Plotly图表自动响应resize
+            });
+            
+            // 绑定双击放大事件 (ECharts图表)
+            bindChartDblClick(trendChart, '销售趋势分析');
+            bindChartDblClick(combinedPieChart, '品类占比分析');
+            bindChartDblClick(quadrantChart, '波士顿矩阵');
+            bindChartDblClick(boxChart, '折扣率分布');
+            bindChartDblClick(radarChart, '品类能力雷达');
+            bindChartDblClick(heatmapChart, '品类-子品类分布');
+            
+            // Plotly 3D图的双击放大
+            document.getElementById('relationChart').addEventListener('dblclick', function() {
+                openPlotlyModal('relationChart', '关联规则3D网络图');
+            });
+        }
+        
+        window.onload = async function() {
+            initCharts();
+            initFilters();
+            // 加载关联规则数据
+            const loaded = await loadAssociationRulesData();
+            if (loaded) {
+                // 数据加载成功后立即渲染3D图
+                const categoryType = document.getElementById('category-type').value;
+                const selectedOption = document.querySelector('.activity-option.selected');
+                const activityType = selectedOption ? selectedOption.dataset.value : '8月活动';
+                updateRelationChart3D(categoryType, activityType);
+            }
+            // 页面加载时自动计算并显示其他图表
+            applyFilters();
+            
+            // 活动类型下拉框事件处理
+            const activityHeader = document.getElementById('activity-type-header');
+            const activityDropdown = document.getElementById('activity-type-dropdown');
+            const activityDisplay = document.getElementById('activity-type-display');
+            
+            // 点击头部展开/收起
+            activityHeader.addEventListener('click', function(e) {
+                e.stopPropagation();
+                activityDropdown.classList.toggle('show');
+            });
+            
+            // 点击选项选择
+            activityDropdown.querySelectorAll('.activity-option').forEach(option => {
+                option.addEventListener('click', function() {
+                    // 移除所有选中状态
+                    activityDropdown.querySelectorAll('.activity-option').forEach(opt => opt.classList.remove('selected'));
+                    this.classList.add('selected');
+                    activityDisplay.textContent = this.textContent;
+                    activityDropdown.classList.remove('show');
+                    
+                    // 更新隐藏的值
+                    activityDropdown.dataset.selectedValue = this.dataset.value;
+                });
+            });
+            
+            // 点击外部关闭
+            document.addEventListener('click', function() {
+                activityDropdown.classList.remove('show');
+            });
+            
+            activityDropdown.addEventListener('click', function(e) {
+                e.stopPropagation();
+            });
+            
+            // 活动类型确定按钮事件监听
+            document.getElementById('activity-type-btn').addEventListener('click', function() {
+                const categoryType = document.getElementById('category-type').value;
+                const selectedOpt = document.querySelector('.activity-option.selected');
+                const activityType = selectedOpt ? selectedOpt.dataset.value : '8月活动';
+                updateRelationChart3D(categoryType, activityType);
+            });
+        };
+        // 双击放大图表功能
+        let modalChart = null;
+        
+        function openChartModal(chartInstance, title) {
+            const modal = document.getElementById('chartModal');
+            const modalTitle = document.getElementById('modalTitle');
+            modalTitle.textContent = title;
+            modal.style.display = 'flex';
+            
+            // 销毁之前的modal图表
+            if (modalChart) {
+                modalChart.dispose();
+            }
+            
+            // 创建新图表，复制原图表的配置
+            modalChart = echarts.init(document.getElementById('modalChart'));
+            const option = chartInstance.getOption();
+            // 调整字体大小以适应大屏
+            if (option.title && option.title[0]) {
+                option.title[0].textStyle = option.title[0].textStyle || {};
+                option.title[0].textStyle.fontSize = 18;
+            }
+            modalChart.setOption(option);
+        }
+        
+        function closeChartModal() {
+            const modal = document.getElementById('chartModal');
+            modal.style.display = 'none';
+            
+            // 清理ECharts图表
+            if (modalChart) {
+                modalChart.dispose();
+                modalChart = null;
+            }
+            
+            // 清理Plotly图表（模态框中的）
+            const modalChartDiv = document.getElementById('modalChart');
+            if (modalChartDiv) {
+                Plotly.purge(modalChartDiv);
+                modalChartDiv.innerHTML = '';
+            }
+        }
+        
+        // 为所有图表添加双击事件
+        function bindChartDblClick(chartInstance, title) {
+            chartInstance.getZr().on('dblclick', function() {
+                openChartModal(chartInstance, title);
+            });
+        }
+        
+        // Plotly图表的双击放大
+        function openPlotlyModal(chartId, title) {
+            const modal = document.getElementById('chartModal');
+            const modalTitle = document.getElementById('modalTitle');
+            modalTitle.textContent = title;
+            modal.style.display = 'flex';
+            
+            // 清除之前的图表
+            const modalChartDiv = document.getElementById('modalChart');
+            modalChartDiv.innerHTML = '';
+            
+            // 复制当前3D图到模态框中
+            const originalChart = document.getElementById(chartId);
+            if (originalChart && originalChart.data) {
+                // 获取原始Plotly图表的数据和布局
+                Plotly.purge(modalChartDiv);
+                
+                // 创建新的div用于模态框中的图表
+                const newDiv = document.createElement('div');
+                newDiv.style.width = '100%';
+                newDiv.style.height = '100%';
+                modalChartDiv.appendChild(newDiv);
+                
+                // 重新绘制图表，使用更大的尺寸
+                Plotly.newPlot(newDiv, originalChart.data, {
+                    ...originalChart.layout,
+                    width: undefined,
+                    height: undefined,
+                    autosize: true,
+                    title: { ...originalChart.layout.title, font: { size: 18 } }
+                }, { responsive: true, displayModeBar: true });
+            } else {
+                modalChartDiv.innerHTML = '<div style="display:flex;justify-content:center;align-items:center;height:100%;color:#fff;">暂无数据</div>';
+            }
+        }
+        
+        // 点击模态框背景关闭
+        document.getElementById('chartModal')?.addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeChartModal();
+            }
+        });
+        
+        // ESC键关闭
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Escape') {
+                closeChartModal();
+            }
+        });
+    </script>
+</body>
+</html>
